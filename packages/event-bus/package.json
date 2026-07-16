@@ -1,0 +1,35 @@
+{
+  "name": "@zarax/event-bus",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Layer 2 — typed pub/sub over Redis for inter-service events (call lifecycle, tool execution, workflow triggers). Swappable transport behind one interface.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.4",
+    "@zarax/shared-logger": "workspace:*",
+    "@zarax/shared-types": "workspace:*",
+    "ioredis": "^5.4.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/uuid": "^10.0.0",
+    "@zarax/eslint-config": "workspace:*",
+    "@zarax/tsconfig": "workspace:*",
+    "eslint": "^9.11.1",
+    "reflect-metadata": "^0.2.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}

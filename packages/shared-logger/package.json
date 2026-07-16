@@ -1,0 +1,45 @@
+{
+  "name": "@zarax/shared-logger",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Layer 1 \u2014 structured pino logging with AsyncLocalStorage correlation-id propagation and field redaction.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.4",
+    "@zarax/shared-types": "workspace:*",
+    "pino": "^9.4.0",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.7.5",
+    "@types/uuid": "^10.0.0",
+    "@zarax/eslint-config": "workspace:*",
+    "@zarax/tsconfig": "workspace:*",
+    "eslint": "^9.11.1",
+    "express": "^4.21.0",
+    "pino-pretty": "^11.2.2",
+    "reflect-metadata": "^0.2.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  },
+  "peerDependencies": {
+    "express": "^4.21.0"
+  }
+}

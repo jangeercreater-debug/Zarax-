@@ -1,0 +1,40 @@
+{
+  "name": "@zarax/shared-config",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Layer 1 \u2014 zod-validated environment configuration, fail-fast at boot, typed NestJS ConfigModule wrapper.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.4",
+    "@zarax/shared-types": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@zarax/eslint-config": "workspace:*",
+    "@zarax/tsconfig": "workspace:*",
+    "eslint": "^9.11.1",
+    "reflect-metadata": "^0.2.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  },
+  "peerDependencies": {
+    "reflect-metadata": "^0.2.0"
+  }
+}

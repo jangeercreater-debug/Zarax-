@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": ["expo/tsconfig.base", "./base.json"],
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "jsx": "react-native",
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "types": ["react-native"]
+  },
+  "include": ["src", "App.tsx", "index.js"],
+  "exclude": ["node_modules"]
+}
