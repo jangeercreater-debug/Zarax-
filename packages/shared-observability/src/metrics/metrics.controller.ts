@@ -1,9 +1,9 @@
-import { Controller, Get, Inject, Header } from '@nestjs/common';
+import { Controller, Get, Header, Inject, VERSION_NEUTRAL } from '@nestjs/common';
 
 import { METRICS_REGISTRY } from './metrics.module';
 import type { MetricsRegistry } from './metrics.registry';
 
-@Controller()
+@Controller({ version: VERSION_NEUTRAL })
 export class MetricsController {
   constructor(@Inject(METRICS_REGISTRY) private readonly metrics: MetricsRegistry) {}
 

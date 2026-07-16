@@ -165,3 +165,58 @@ enum CallChannel {
   VOICE
   WEB_WIDGET
 }
+
+// ---------------------------------------------------------------------------
+// Audit log — one immutable row per sensitive action. Never updated or deleted
+// by application code (compliance-grade trail); only ever appended to.
+// ---------------------------------------------------------------------------
+model AuditLogEntry {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  actorId      String   @map("actor_id")
+  actorType    String   @map("actor_type") // 'user' | 'service_account' | 'api_key' | 'system'
+  action       String // e.g. 'auth.login', 'auth.signup', 'tool.executed', 'api_key.revoked'
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  metadata     Json     @default("{}")
+  ipAddress    String?  @map("ip_address")
+  correlationId String? @map("correlation_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@map("audit_log_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Feature flags — a global definition (with an optional default rollout
+// percentage) plus per-tenant overrides. Cached in Redis by
+// @zarax/feature-flags; this table is the source of truth.
+// ---------------------------------------------------------------------------
+model FeatureFlag {
+  key                String   @id
+  description        String
+  defaultEnabled     Boolean  @default(false) @map("default_enabled")
+  /** 0-100. Only consulted when no explicit tenant override exists. */
+  rolloutPercentage  Int      @default(0) @map("rollout_percentage")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  overrides FeatureFlagOverride[]
+
+  @@map("feature_flags")
+}
+
+model FeatureFlagOverride {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  flagKey   String   @map("flag_key")
+  enabled   Boolean
+  createdAt DateTime @default(now()) @map("created_at")
+
+  flag FeatureFlag @relation(fields: [flagKey], references: [key], onDelete: Cascade)
+
+  @@unique([tenantId, flagKey])
+  @@index([tenantId])
+  @@map("feature_flag_overrides")
+}

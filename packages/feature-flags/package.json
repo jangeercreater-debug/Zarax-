@@ -1,0 +1,32 @@
+{
+  "name": "@zarax/feature-flags",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "Layer 4 — feature flag evaluation (global default + per-tenant override + percentage rollout), Redis-cached with Postgres as the source of truth.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.4",
+    "@zarax/database": "workspace:*",
+    "@zarax/redis-client": "workspace:*",
+    "@zarax/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@zarax/eslint-config": "workspace:*",
+    "@zarax/tsconfig": "workspace:*",
+    "eslint": "^9.11.1",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.2"
+  }
+}

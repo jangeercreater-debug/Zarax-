@@ -13,7 +13,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { GlobalExceptionFilter } from '@zarax/shared-errors';
 import { correlationIdMiddleware, ZaraxLogger } from '@zarax/shared-logger';
-import { setupGracefulShutdown } from '@zarax/shared-observability';
+import { applyApiVersioning, setupGracefulShutdown, setupOpenApi } from '@zarax/shared-observability';
 
 import { AppModule } from './app.module';
 /* eslint-enable import/order */
@@ -43,6 +43,15 @@ async function bootstrap(): Promise<void> {
   );
 
   app.enableCors({ origin: true, credentials: true });
+
+  // Production standards (see docs/production-standards.md): every route defaults to
+  // /v1/... (health/metrics stay unversioned); OpenAPI docs auto-generate from the
+  // existing DTO/controller decorators and are served at /docs.
+  applyApiVersioning(app);
+  setupOpenApi(app, {
+    serviceName: 'ZaraX API',
+    description: 'Core domain service — tenants, users/auth, agents.',
+  });
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);

@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, Module, type DynamicModule } from '@nestjs/common';
+import { Controller, Get, Inject, Module, VERSION_NEUTRAL, type DynamicModule } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -8,7 +8,7 @@ import {
 
 export const HEALTH_INDICATORS = Symbol('HEALTH_INDICATORS');
 
-@Controller()
+@Controller({ version: VERSION_NEUTRAL })
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,

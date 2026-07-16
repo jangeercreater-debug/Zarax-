@@ -1,9 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { AuditLogService } from '@zarax/audit-log';
 import { PRISMA_CLIENT, TenantRepository, UserRepository, type PrismaClient } from '@zarax/database';
 import { JwtTokenService } from '@zarax/shared-auth';
 import { ConflictError, UnauthenticatedError } from '@zarax/shared-errors';
-import { DEFAULT_ROLE_PERMISSIONS, type Role } from '@zarax/shared-types';
+import { asTenantId, asUserId, DEFAULT_ROLE_PERMISSIONS, type Role } from '@zarax/shared-types';
 
 import type { AuthTokensDto } from './dto/auth-response.dto';
 import type { LoginDto } from './dto/login.dto';
@@ -15,6 +16,7 @@ export class AuthService {
     private readonly userRepository: UserRepository,
     private readonly tenantRepository: TenantRepository,
     private readonly jwtTokenService: JwtTokenService,
+    private readonly auditLogService: AuditLogService,
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
   ) {}
 
@@ -39,6 +41,8 @@ export class AuthService {
       role: 'OWNER',
     });
 
+    await this.recordAuthAuditEvent('auth.signup', user.id, tenant.id, user.email, ['owner'], ['*']);
+
     return this.issueTokens(user.id, tenant.id, user.email, 'OWNER');
   }
 
@@ -54,6 +58,16 @@ export class AuthService {
       throw new UnauthenticatedError('This user is not associated with any tenant.');
     }
 
+    const role = membership.role.toLowerCase() as Role;
+    await this.recordAuthAuditEvent(
+      'auth.login',
+      user.id,
+      membership.tenantId,
+      user.email,
+      [role],
+      DEFAULT_ROLE_PERMISSIONS[role] ?? [],
+    );
+
     return this.issueTokens(user.id, membership.tenantId, user.email, membership.role);
   }
 
@@ -67,6 +81,31 @@ export class AuthService {
     if (!membership) throw new UnauthenticatedError('Tenant membership no longer exists.');
 
     return this.issueTokens(user.id, membership.tenantId, user.email, membership.role);
+  }
+
+  /** Signup/login are @Public() routes — no Principal exists in the request yet when
+   * they run, so the declarative @Audited()+AuditInterceptor pattern (which reads
+   * `request.principal`) doesn't apply. We construct the resulting identity directly
+   * here, where it's known, and record it the same way AuditInterceptor would. */
+  private async recordAuthAuditEvent(
+    action: string,
+    userId: string,
+    tenantId: string,
+    email: string,
+    roles: string[],
+    permissions: string[],
+  ): Promise<void> {
+    await this.auditLogService.record({
+      principal: {
+        type: 'user',
+        id: asUserId(userId),
+        tenantId: asTenantId(tenantId),
+        email,
+        roles,
+        permissions,
+      },
+      action,
+    });
   }
 
   private issueTokens(

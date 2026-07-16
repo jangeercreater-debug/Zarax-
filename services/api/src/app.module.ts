@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HealthIndicatorService } from '@nestjs/terminus';
+import { ApiStandardsModule } from '@zarax/api-standards';
+import { AuditLogModule } from '@zarax/audit-log';
 import {
   ApiKeyRepository,
   createPrismaClient,
@@ -8,6 +10,7 @@ import {
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
+import { FeatureFlagsModule } from '@zarax/feature-flags';
 import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
 import { AuthModule, API_KEY_VALIDATOR, SERVICE_ACCOUNT_VALIDATOR } from '@zarax/shared-auth';
 import { AppConfigModule } from '@zarax/shared-config';
@@ -58,6 +61,14 @@ const healthIndicatorService = new HealthIndicatorService();
         useValue: new ServiceAccountRepository(prisma),
       },
     }),
+    // --- Production infrastructure standards (see docs/production-standards.md) ---
+    AuditLogModule.forRoot(),
+    FeatureFlagsModule.forRoot(),
+    ApiStandardsModule.forRoot({
+      redisUrl: process.env.REDIS_URL ?? '',
+      defaultRateLimit: { limit: 100, windowMs: 60_000 },
+    }),
+    // --------------------------------------------------------------------------------
     PrismaClientModule.forRoot(),
     UsersAuthModule,
     TenantsModule,

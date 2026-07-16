@@ -3,3 +3,4 @@ export * from './cache/cache.service';
 export * from './lock/distributed-lock';
 export * from './health/redis-health-indicator';
 export * from './module/redis-cache.module';
+export * from './rate-limiter/distributed-rate-limiter';

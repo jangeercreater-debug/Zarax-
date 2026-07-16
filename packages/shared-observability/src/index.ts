@@ -5,3 +5,5 @@ export * from './metrics/metrics.controller';
 export * from './metrics/metrics.module';
 export * from './tracing/tracing';
 export * from './shutdown/graceful-shutdown';
+export * from './versioning/api-versioning';
+export * from './openapi/setup-openapi';
