@@ -1,9 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { ChatMessage } from '@zarax/ai-sdk';
-import { CacheService } from '@zarax/redis-client';
+import { CacheService, REDIS_CACHE } from '@zarax/redis-client';
 import type { TenantId } from '@zarax/shared-types';
-
-import { REDIS_CACHE } from '../common/redis.module';
 
 const HISTORY_KEY_PREFIX = 'conversation:';
 // A call is expected to last minutes, not hours — this is generous headroom, not an

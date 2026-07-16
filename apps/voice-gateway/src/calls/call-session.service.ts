@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { CacheService } from '@zarax/redis-client';
+import { CacheService, REDIS_CACHE } from '@zarax/redis-client';
 import { NotFoundError } from '@zarax/shared-errors';
 import { asTenantId, type TenantId } from '@zarax/shared-types';
 import { createEvent, EVENT_BUS, type EventBus } from '@zarax/event-bus';
@@ -20,7 +20,7 @@ interface PendingCallMetadata {
 @Injectable()
 export class CallSessionService {
   constructor(
-    private readonly cache: CacheService,
+    @Inject(REDIS_CACHE) private readonly cache: CacheService,
     @Inject(EVENT_BUS) private readonly eventBus: EventBus,
   ) {}
 

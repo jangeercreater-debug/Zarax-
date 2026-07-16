@@ -16,6 +16,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@nestjs/common": "^10.4.4",
     "@nestjs/terminus": "^10.2.3",
     "@zarax/shared-logger": "workspace:*",
     "@zarax/shared-types": "workspace:*",

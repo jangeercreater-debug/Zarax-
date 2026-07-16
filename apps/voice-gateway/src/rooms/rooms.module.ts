@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
-import { AgentRepository, type PrismaClient } from '@zarax/database';
+import { AgentRepository, PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 
-import { PRISMA_CLIENT } from '../common/database.module';
 import { CallsModule } from '../calls/calls.module';
 import { LiveKitModule } from '../livekit/livekit.module';
 import { RoomsController } from './rooms.controller';

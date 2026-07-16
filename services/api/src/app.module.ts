@@ -4,6 +4,7 @@ import {
   ApiKeyRepository,
   createPrismaClient,
   createPrismaHealthIndicator,
+  PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
@@ -13,7 +14,6 @@ import { AppConfigModule } from '@zarax/shared-config';
 import { LoggerModule } from '@zarax/shared-logger';
 import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
-import { DatabaseModule } from './common/database.module';
 import { apiEnvSchema } from './config/env.schema';
 import { UsersAuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
@@ -22,11 +22,11 @@ import { TenantsModule } from './modules/tenants/tenants.module';
  * NestJS evaluates every dynamic module's .forRoot() call when this file is loaded —
  * before the DI container exists. That means these bootstrap-critical instances can't
  * come from DI yet; they're built directly from process.env here, then re-exposed
- * through DatabaseModule/EventBusModule for injection into the rest of the app.
+ * through PrismaClientModule/EventBusModule for injection into the rest of the app.
  * (Full env validation still happens via AppConfigModule.forRoot() below — this is
  * only for the handful of things that must exist before that runs.)
  */
-const prisma = createPrismaClient();
+const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
 const healthIndicatorService = new HealthIndicatorService();
 
@@ -58,7 +58,7 @@ const healthIndicatorService = new HealthIndicatorService();
         useValue: new ServiceAccountRepository(prisma),
       },
     }),
-    DatabaseModule,
+    PrismaClientModule.forRoot(),
     UsersAuthModule,
     TenantsModule,
   ],

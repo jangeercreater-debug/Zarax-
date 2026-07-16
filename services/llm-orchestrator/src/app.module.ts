@@ -5,6 +5,7 @@ import {
   ApiKeyRepository,
   createPrismaClient,
   createPrismaHealthIndicator,
+  PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
@@ -14,13 +15,12 @@ import { AppConfigModule } from '@zarax/shared-config';
 import { LoggerModule } from '@zarax/shared-logger';
 import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
-import { DatabaseModule } from './common/database.module';
 import { llmOrchestratorEnvSchema } from './config/env.schema';
 import { OrchestrationModule } from './orchestration/orchestration.module';
 
 // See services/api/src/app.module.ts for why these instances are built directly from
 // process.env here rather than via DI — the same reasoning applies to every service.
-const prisma = createPrismaClient();
+const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
 const healthIndicatorService = new HealthIndicatorService();
 
@@ -59,7 +59,7 @@ const healthIndicatorService = new HealthIndicatorService();
       openaiApiKey: process.env.OPENAI_API_KEY,
       geminiApiKey: process.env.GEMINI_API_KEY,
     }),
-    DatabaseModule,
+    PrismaClientModule.forRoot(),
     OrchestrationModule,
   ],
 })

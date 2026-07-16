@@ -20,6 +20,7 @@
     "@nestjs/terminus": "^10.2.3",
     "@zarax/database": "workspace:*",
     "@zarax/qdrant-client": "workspace:*",
+    "@zarax/redis-client": "workspace:*",
     "@zarax/resilience": "workspace:*",
     "@zarax/shared-auth": "workspace:*",
     "@zarax/shared-config": "workspace:*",

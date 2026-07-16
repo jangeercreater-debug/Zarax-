@@ -1,10 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AI_PROVIDER_REGISTRY, type AiProviderRegistry, type ChatMessage } from '@zarax/ai-sdk';
-import { AgentRepository, type PrismaClient } from '@zarax/database';
+import { AgentRepository, PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 import type { TenantId } from '@zarax/shared-types';
 
-import { PRISMA_CLIENT } from '../common/database.module';
 import { ConversationStateService } from '../conversation-state/conversation-state.service';
 import { RagClient } from '../rag-client/rag-client';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';

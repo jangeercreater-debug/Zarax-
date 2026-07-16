@@ -4,6 +4,7 @@ import {
   ApiKeyRepository,
   createPrismaClient,
   createPrismaHealthIndicator,
+  PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
 import { createQdrantClient, createQdrantHealthIndicator } from '@zarax/qdrant-client';
@@ -13,13 +14,12 @@ import { AppConfigModule } from '@zarax/shared-config';
 import { LoggerModule } from '@zarax/shared-logger';
 import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
-import { DatabaseModule } from './common/database.module';
 import { ragServiceEnvSchema } from './config/env.schema';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 
 // See services/api/src/app.module.ts for why these instances are built directly from
 // process.env here rather than via DI — the same reasoning applies to every service.
-const prisma = createPrismaClient();
+const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
 const qdrant = createQdrantClient({
   url: process.env.QDRANT_URL ?? '',
@@ -53,7 +53,7 @@ const healthIndicatorService = new HealthIndicatorService();
         useValue: new ServiceAccountRepository(prisma),
       },
     }),
-    DatabaseModule,
+    PrismaClientModule.forRoot(),
     KnowledgeBaseModule,
   ],
 })

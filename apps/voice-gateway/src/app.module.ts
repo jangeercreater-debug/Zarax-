@@ -4,6 +4,7 @@ import {
   ApiKeyRepository,
   createPrismaClient,
   createPrismaHealthIndicator,
+  PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
@@ -14,7 +15,6 @@ import { LoggerModule } from '@zarax/shared-logger';
 import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
 import { CallsModule } from './calls/calls.module';
-import { DatabaseModule } from './common/database.module';
 import { voiceGatewayEnvSchema } from './config/env.schema';
 import { LiveKitModule } from './livekit/livekit.module';
 import { RoomsModule } from './rooms/rooms.module';
@@ -22,7 +22,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 
 // See services/api/src/app.module.ts for why these instances are built directly from
 // process.env here rather than via DI — the same reasoning applies to every service.
-const prisma = createPrismaClient();
+const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
 const healthIndicatorService = new HealthIndicatorService();
 
@@ -54,7 +54,7 @@ const healthIndicatorService = new HealthIndicatorService();
         useValue: new ServiceAccountRepository(prisma),
       },
     }),
-    DatabaseModule,
+    PrismaClientModule.forRoot(),
     LiveKitModule,
     CallsModule,
     RoomsModule,

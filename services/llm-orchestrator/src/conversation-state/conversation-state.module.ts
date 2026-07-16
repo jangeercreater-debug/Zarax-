@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
+import { RedisCacheModule } from '@zarax/redis-client';
 
-import { RedisModule } from '../common/redis.module';
 import { ConversationStateService } from './conversation-state.service';
 
 @Module({
-  imports: [RedisModule],
+  imports: [RedisCacheModule.forRoot({ redisUrl: process.env.REDIS_URL ?? '' })],
   providers: [ConversationStateService],
   exports: [ConversationStateService],
 })

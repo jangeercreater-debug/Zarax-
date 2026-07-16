@@ -1,10 +1,9 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
-import { AgentRepository, type PrismaClient } from '@zarax/database';
+import { AgentRepository, PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 import { createEvent, EVENT_BUS, type EventBus } from '@zarax/event-bus';
 import { runWithRequestContext, ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 import { asTenantId, type ToolExecutionRequestedEvent } from '@zarax/shared-types';
 
-import { PRISMA_CLIENT } from '../common/database.module';
 import { ToolRegistryService } from '../tools/registry/tool-registry.service';
 
 @Injectable()

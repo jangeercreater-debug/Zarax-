@@ -1,10 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { TenantRepository, UserRepository, type PrismaClient } from '@zarax/database';
+import { PRISMA_CLIENT, TenantRepository, UserRepository, type PrismaClient } from '@zarax/database';
 import { JwtTokenService } from '@zarax/shared-auth';
 import { ConflictError, UnauthenticatedError } from '@zarax/shared-errors';
 import { DEFAULT_ROLE_PERMISSIONS, type Role } from '@zarax/shared-types';
-import { PRISMA_CLIENT } from '../../common/database.module';
+
 import type { AuthTokensDto } from './dto/auth-response.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { SignupDto } from './dto/signup.dto';
