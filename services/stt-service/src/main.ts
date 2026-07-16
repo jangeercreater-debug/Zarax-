@@ -12,6 +12,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { GlobalExceptionFilter } from '@zarax/shared-errors';
 import { correlationIdMiddleware, ZaraxLogger } from '@zarax/shared-logger';
+import { setupGracefulShutdown } from '@zarax/shared-observability';
 
 import { AppModule } from './app.module';
 import { TranscriptionGatewayService } from './transcription/transcription-gateway.service';
@@ -42,6 +43,8 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3002);
   await app.listen(port);
   logger.log(`stt-service listening on port ${port} (WS transcription endpoint at /transcription)`);
+
+  setupGracefulShutdown(app, { logger });
 }
 
 void bootstrap();

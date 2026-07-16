@@ -35,7 +35,9 @@ describe('CartesiaRestClient', () => {
       voice: { mode: 'id', id: 'voice-1' },
       model_id: 'sonic-english',
     });
-    expect((requestInit.headers as Record<string, string>)['X-API-Key']).toBe('test-key');
+
+    const headers = requestInit.headers as Headers;
+    expect(headers.get('X-API-Key')).toBe('test-key');
   });
 
   it('throws ExternalServiceError on a non-OK HTTP response', async () => {
@@ -61,5 +63,14 @@ describe('CartesiaRestClient', () => {
     await expect(client.synthesize({ text: 'hello', voiceId: 'voice-1' })).rejects.toThrow(
       ExternalServiceError,
     );
+  });
+
+  it('exposes a resilientClient with a health monitor reflecting call outcomes', async () => {
+    fetchMock.mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) });
+
+    const client = new CartesiaRestClient({ apiKey: 'test-key', apiVersion: '2024-06-10' });
+    await client.synthesize({ text: 'hi', voiceId: 'voice-1' });
+
+    expect(client.resilientClient.healthMonitor.getSnapshot().successCount).toBe(1);
   });
 });

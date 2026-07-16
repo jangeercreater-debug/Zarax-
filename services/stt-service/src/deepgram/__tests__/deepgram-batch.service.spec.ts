@@ -1,5 +1,6 @@
 import { AppConfigService } from '@zarax/shared-config';
 import { ExternalServiceError } from '@zarax/shared-errors';
+import type { ZaraxLogger } from '@zarax/shared-logger';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { SttServiceEnv } from '../../config/env.schema';
@@ -19,6 +20,8 @@ function buildConfig(): AppConfigService<SttServiceEnv> {
   } as SttServiceEnv);
 }
 
+const noopLogger = { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn() } as unknown as ZaraxLogger;
+
 describe('DeepgramBatchService', () => {
   beforeEach(() => {
     transcribeFileMock.mockReset();
@@ -32,7 +35,7 @@ describe('DeepgramBatchService', () => {
       error: null,
     });
 
-    const service = new DeepgramBatchService(buildConfig());
+    const service = new DeepgramBatchService(buildConfig(), noopLogger);
     const result = await service.transcribeFile(Buffer.from('fake-audio'), {
       mimetype: 'audio/wav',
     });
@@ -50,7 +53,7 @@ describe('DeepgramBatchService', () => {
       error: null,
     });
 
-    const service = new DeepgramBatchService(buildConfig());
+    const service = new DeepgramBatchService(buildConfig(), noopLogger);
     const result = await service.transcribeFile(Buffer.from('silence'), { mimetype: 'audio/wav' });
 
     expect(result).toEqual({ text: '', confidence: 0 });
@@ -59,10 +62,22 @@ describe('DeepgramBatchService', () => {
   it('throws ExternalServiceError when Deepgram returns an error', async () => {
     transcribeFileMock.mockResolvedValue({ result: null, error: { message: 'quota exceeded' } });
 
-    const service = new DeepgramBatchService(buildConfig());
+    const service = new DeepgramBatchService(buildConfig(), noopLogger);
 
     await expect(
       service.transcribeFile(Buffer.from('audio'), { mimetype: 'audio/wav' }),
     ).rejects.toThrow(ExternalServiceError);
+  });
+
+  it('exposes a resilientClient with a health monitor reflecting call outcomes', async () => {
+    transcribeFileMock.mockResolvedValue({
+      result: { results: { channels: [{ alternatives: [{ transcript: 'hi', confidence: 0.9 }] }] } },
+      error: null,
+    });
+
+    const service = new DeepgramBatchService(buildConfig(), noopLogger);
+    await service.transcribeFile(Buffer.from('audio'), { mimetype: 'audio/wav' });
+
+    expect(service.resilientClient.healthMonitor.getSnapshot().successCount).toBe(1);
   });
 });

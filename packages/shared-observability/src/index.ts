@@ -4,3 +4,4 @@ export * from './metrics/metrics.interceptor';
 export * from './metrics/metrics.controller';
 export * from './metrics/metrics.module';
 export * from './tracing/tracing';
+export * from './shutdown/graceful-shutdown';

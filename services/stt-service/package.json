@@ -19,6 +19,7 @@
     "@nestjs/core": "^10.4.4",
     "@nestjs/platform-express": "^10.4.4",
     "@nestjs/terminus": "^10.2.3",
+    "@zarax/resilience": "workspace:*",
     "@zarax/shared-auth": "workspace:*",
     "@zarax/shared-config": "workspace:*",
     "@zarax/shared-errors": "workspace:*",

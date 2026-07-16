@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { UnauthenticatedError } from '@zarax/shared-errors';
 import { WebhookReceiver, type WebhookEvent } from 'livekit-server-sdk';
 
+/**
+ * Deliberately NOT wrapped in ResilientClient — `receiver.receive()` is local
+ * cryptographic signature verification (no outbound network call), so retry/timeout/
+ * circuit-breaker/rate-limit concerns don't apply, and "retrying" a failed signature
+ * check would be a security anti-pattern rather than useful resilience.
+ */
 @Injectable()
 export class LiveKitWebhookVerifier {
   private readonly receiver: WebhookReceiver;

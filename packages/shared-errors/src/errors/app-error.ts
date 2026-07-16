@@ -82,3 +82,21 @@ export class DependencyUnavailableError extends AppError {
     super(ErrorCode.DEPENDENCY_UNAVAILABLE, `${dependencyName} is currently unavailable.`);
   }
 }
+
+export class TimeoutError extends AppError {
+  constructor(operationName: string, timeoutMs: number) {
+    super(ErrorCode.TIMEOUT, `${operationName} timed out after ${timeoutMs}ms.`);
+  }
+}
+
+/** Thrown when a call is rejected because its circuit breaker is currently open —
+ * i.e. the upstream provider has been failing enough that we're deliberately not
+ * calling it right now, to give it room to recover and to fail fast for callers. */
+export class CircuitOpenError extends AppError {
+  constructor(providerName: string) {
+    super(
+      ErrorCode.CIRCUIT_OPEN,
+      `${providerName}'s circuit breaker is open (too many recent failures); not attempting the call.`,
+    );
+  }
+}

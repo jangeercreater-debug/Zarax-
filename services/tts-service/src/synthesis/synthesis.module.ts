@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { INTERNAL_SERVICE_TOKEN } from '@zarax/shared-auth';
 import { APP_CONFIG, type AppConfigService } from '@zarax/shared-config';
+import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 
 import { CartesiaRestClient } from '../cartesia/cartesia-rest.client';
 import type { TtsServiceEnv } from '../config/env.schema';
@@ -15,12 +16,13 @@ export const CARTESIA_REST_CLIENT = Symbol('CARTESIA_REST_CLIENT');
     SynthesisGatewayService,
     {
       provide: CARTESIA_REST_CLIENT,
-      useFactory: (config: AppConfigService<TtsServiceEnv>) =>
+      useFactory: (config: AppConfigService<TtsServiceEnv>, logger: ZaraxLogger) =>
         new CartesiaRestClient({
           apiKey: config.get('CARTESIA_API_KEY'),
           apiVersion: config.get('CARTESIA_API_VERSION'),
+          logger,
         }),
-      inject: [APP_CONFIG],
+      inject: [APP_CONFIG, ZARAX_LOGGER],
     },
     {
       provide: INTERNAL_SERVICE_TOKEN,

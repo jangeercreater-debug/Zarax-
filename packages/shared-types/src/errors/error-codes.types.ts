@@ -18,6 +18,8 @@ export enum ErrorCode {
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   EXTERNAL_SERVICE_ERROR = 'EXTERNAL_SERVICE_ERROR',
   DEPENDENCY_UNAVAILABLE = 'DEPENDENCY_UNAVAILABLE',
+  TIMEOUT = 'TIMEOUT',
+  CIRCUIT_OPEN = 'CIRCUIT_OPEN',
 }
 
 export const ERROR_CODE_HTTP_STATUS: Record<ErrorCode, number> = {
@@ -31,6 +33,8 @@ export const ERROR_CODE_HTTP_STATUS: Record<ErrorCode, number> = {
   [ErrorCode.INTERNAL_ERROR]: 500,
   [ErrorCode.EXTERNAL_SERVICE_ERROR]: 502,
   [ErrorCode.DEPENDENCY_UNAVAILABLE]: 503,
+  [ErrorCode.TIMEOUT]: 504,
+  [ErrorCode.CIRCUIT_OPEN]: 503,
 };
 
 /**

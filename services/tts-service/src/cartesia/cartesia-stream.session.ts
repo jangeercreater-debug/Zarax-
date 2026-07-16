@@ -1,6 +1,7 @@
-import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 
+import type { ResilientClient } from '@zarax/resilience';
 import { ExternalServiceError } from '@zarax/shared-errors';
 import WebSocket from 'ws';
 
@@ -31,36 +32,72 @@ interface CartesiaWsMessage {
 /**
  * One instance per synthesis request — opens a fresh WebSocket to Cartesia, streams the
  * full transcript as a single utterance (continue: false), and re-emits decoded audio
- * chunks as they arrive. Sentence-by-sentence incremental synthesis (feeding partial
- * LLM output as it streams) is a natural extension once llm-orchestrator exists to
- * drive it — this one-shot shape is what a single synthesis request needs today.
+ * chunks as they arrive. Only connection establishment goes through the resilience
+ * layer (circuit breaker + timeout, shared across sessions via the injected
+ * `resilientClient`) — same reasoning as DeepgramLiveSession: retrying mid-stream isn't
+ * meaningful once synthesis has started, so a post-connection failure is surfaced via
+ * the `error` event instead.
+ *
+ * Sentence-by-sentence incremental synthesis (feeding partial LLM output as it streams)
+ * is a natural extension once llm-orchestrator exists to drive it — this one-shot shape
+ * is what a single synthesis request needs today.
  */
 export class CartesiaStreamSession extends EventEmitter {
   private readonly ws: WebSocket;
 
-  constructor(options: CartesiaStreamOptions) {
+  private constructor(ws: WebSocket) {
     super();
+    this.ws = ws;
+    this.wireEvents();
+  }
 
-    const url = `${CARTESIA_WS_ENDPOINT}?api_key=${encodeURIComponent(options.apiKey)}&cartesia_version=${encodeURIComponent(options.apiVersion)}`;
-    this.ws = new WebSocket(url);
+  static async create(
+    options: CartesiaStreamOptions,
+    resilientClient: ResilientClient,
+  ): Promise<CartesiaStreamSession> {
+    const ws = await resilientClient.execute(
+      () =>
+        new Promise<WebSocket>((resolve, reject) => {
+          const url = `${CARTESIA_WS_ENDPOINT}?api_key=${encodeURIComponent(options.apiKey)}&cartesia_version=${encodeURIComponent(options.apiVersion)}`;
+          const socket = new WebSocket(url);
 
-    this.ws.on('open', () => {
-      this.ws.send(
-        JSON.stringify({
-          context_id: randomUUID(),
-          model_id: options.modelId ?? DEFAULT_MODEL_ID,
-          transcript: options.text,
-          voice: { mode: 'id', id: options.voiceId },
-          output_format: {
-            container: 'raw',
-            encoding: 'pcm_s16le',
-            sample_rate: DEFAULT_SAMPLE_RATE,
-          },
-          continue: false,
+          const onOpen = (): void => {
+            socket.off('error', onError);
+            socket.send(
+              JSON.stringify({
+                context_id: randomUUID(),
+                model_id: options.modelId ?? DEFAULT_MODEL_ID,
+                transcript: options.text,
+                voice: { mode: 'id', id: options.voiceId },
+                output_format: {
+                  container: 'raw',
+                  encoding: 'pcm_s16le',
+                  sample_rate: DEFAULT_SAMPLE_RATE,
+                },
+                continue: false,
+              }),
+            );
+            resolve(socket);
+          };
+          const onError = (error: Error): void => {
+            socket.off('open', onOpen);
+            reject(new ExternalServiceError('Cartesia', error.message));
+          };
+
+          socket.once('open', onOpen);
+          socket.once('error', onError);
         }),
-      );
+      'Cartesia.openStreamSession',
+    ).catch((error: unknown) => {
+      // Timeout/circuit-open/rate-limit errors from the resilience layer, or the
+      // ExternalServiceError from onError above, both need a socket-less failure path.
+      throw error instanceof Error ? error : new Error('Failed to open Cartesia stream session');
     });
 
+    return new CartesiaStreamSession(ws);
+  }
+
+  private wireEvents(): void {
     this.ws.on('message', (raw) => {
       let message: CartesiaWsMessage;
       try {

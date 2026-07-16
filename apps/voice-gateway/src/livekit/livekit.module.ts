@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfigService } from '@zarax/shared-config';
+import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 
 import type { VoiceGatewayEnv } from '../config/env.schema';
 import { LiveKitRoomService } from './livekit-room.service';
@@ -10,19 +11,20 @@ import { LiveKitWebhookVerifier } from './livekit-webhook-verifier.service';
   providers: [
     {
       provide: LiveKitRoomService,
-      useFactory: (config: AppConfigService<VoiceGatewayEnv>): LiveKitRoomService =>
+      useFactory: (config: AppConfigService<VoiceGatewayEnv>, logger: ZaraxLogger): LiveKitRoomService =>
         new LiveKitRoomService(
           config.get('LIVEKIT_URL'),
           config.get('LIVEKIT_API_KEY'),
           config.get('LIVEKIT_API_SECRET'),
+          logger,
         ),
-      inject: [APP_CONFIG],
+      inject: [APP_CONFIG, ZARAX_LOGGER],
     },
     {
       provide: LiveKitTokenService,
-      useFactory: (config: AppConfigService<VoiceGatewayEnv>): LiveKitTokenService =>
-        new LiveKitTokenService(config.get('LIVEKIT_API_KEY'), config.get('LIVEKIT_API_SECRET')),
-      inject: [APP_CONFIG],
+      useFactory: (config: AppConfigService<VoiceGatewayEnv>, logger: ZaraxLogger): LiveKitTokenService =>
+        new LiveKitTokenService(config.get('LIVEKIT_API_KEY'), config.get('LIVEKIT_API_SECRET'), logger),
+      inject: [APP_CONFIG, ZARAX_LOGGER],
     },
     {
       provide: LiveKitWebhookVerifier,

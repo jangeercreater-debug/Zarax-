@@ -1,3 +1,4 @@
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { NodeSDK } from '@opentelemetry/sdk-node';
@@ -9,6 +10,14 @@ export interface TracingOptions {
   /** OTLP collector endpoint. If omitted, tracing initializes with no exporter configured
    * (spans are created but not shipped) — acceptable for local dev without a collector. */
   otlpEndpoint?: string;
+  /** Instrumentations to disable by name (e.g. ['@opentelemetry/instrumentation-fs'] —
+   * filesystem instrumentation is noisy and rarely useful). HTTP/Express/gRPC and
+   * common DB client instrumentations stay on by default so a request's trace context
+   * (W3C traceparent) automatically propagates across service boundaries — this is
+   * what makes a voice session traceable end-to-end: LiveKit webhook → voice-gateway
+   * → stt-service → llm-orchestrator → tool-executor → tts-service, each hop's HTTP
+   * call carrying the parent trace ID without any manual header plumbing. */
+  disabledInstrumentations?: string[];
 }
 
 /**
@@ -22,6 +31,8 @@ export interface TracingOptions {
  *   // ...then the rest of main.ts's imports and bootstrap logic
  */
 export function setupTracing(options: TracingOptions): NodeSDK {
+  const disabled = new Set(options.disabledInstrumentations ?? ['@opentelemetry/instrumentation-fs']);
+
   const sdk = new NodeSDK({
     resource: new Resource({
       [ATTR_SERVICE_NAME]: options.serviceName,
@@ -30,16 +41,20 @@ export function setupTracing(options: TracingOptions): NodeSDK {
     traceExporter: options.otlpEndpoint
       ? new OTLPTraceExporter({ url: options.otlpEndpoint })
       : undefined,
-    instrumentations: [], // Populated per-service (auto-instrumentations-node) once each
-    // service's actual DB/HTTP client choices are finalized in later milestones — kept
-    // empty here to avoid instrumenting libraries a given service doesn't use.
+    instrumentations: [
+      getNodeAutoInstrumentations({
+        ...Object.fromEntries([...disabled].map((name) => [name, { enabled: false }])),
+      }),
+    ],
   });
 
   sdk.start();
 
-  process.on('SIGTERM', () => {
+  const shutdown = (): void => {
     void sdk.shutdown().finally(() => process.exit(0));
-  });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 
   return sdk;
 }

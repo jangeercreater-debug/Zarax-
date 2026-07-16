@@ -12,6 +12,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { GlobalExceptionFilter } from '@zarax/shared-errors';
 import { correlationIdMiddleware, ZaraxLogger } from '@zarax/shared-logger';
+import { setupGracefulShutdown } from '@zarax/shared-observability';
 
 import { AppModule } from './app.module';
 import { SynthesisGatewayService } from './synthesis/synthesis-gateway.service';
@@ -39,6 +40,8 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3003);
   await app.listen(port);
   logger.log(`tts-service listening on port ${port} (WS synthesis endpoint at /synthesis)`);
+
+  setupGracefulShutdown(app, { logger });
 }
 
 void bootstrap();
