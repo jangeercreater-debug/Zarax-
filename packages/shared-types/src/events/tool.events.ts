@@ -3,6 +3,7 @@ import type { EventEnvelope } from './event-envelope.types';
 export interface ToolExecutionRequestedPayload {
   requestId: string;
   callId: string;
+  agentId: string;
   toolName: string;
   /** Arguments as decided by the LLM's function-calling output — validated by tool-executor
    * against the tool's own schema before execution, never trusted as-is. */

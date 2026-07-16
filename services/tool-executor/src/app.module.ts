@@ -1,0 +1,42 @@
+import { Module } from '@nestjs/common';
+import { HealthIndicatorService } from '@nestjs/terminus';
+import { createPrismaClient, createPrismaHealthIndicator } from '@zarax/database';
+import { EventBusModule } from '@zarax/event-bus';
+import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
+import { AppConfigModule } from '@zarax/shared-config';
+import { LoggerModule } from '@zarax/shared-logger';
+import { HealthModule, MetricsModule } from '@zarax/shared-observability';
+
+import { DatabaseModule } from './common/database.module';
+import { toolExecutorEnvSchema } from './config/env.schema';
+import { ExecutionModule } from './execution/execution.module';
+
+// See services/api/src/app.module.ts for why these instances are built directly from
+// process.env here rather than via DI — the same reasoning applies to every service.
+const prisma = createPrismaClient();
+const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
+const healthIndicatorService = new HealthIndicatorService();
+
+@Module({
+  imports: [
+    AppConfigModule.forRoot({ schema: toolExecutorEnvSchema }),
+    LoggerModule.forRoot({
+      serviceName: 'tool-executor',
+      level: process.env.LOG_LEVEL ?? 'info',
+      pretty: process.env.NODE_ENV !== 'production',
+    }),
+    EventBusModule.forRoot({
+      redisUrl: process.env.EVENT_BUS_REDIS_URL ?? process.env.REDIS_URL ?? '',
+    }),
+    HealthModule.forRoot({
+      indicators: [
+        createPrismaHealthIndicator(prisma, healthIndicatorService),
+        createRedisHealthIndicator(redis, healthIndicatorService),
+      ],
+    }),
+    MetricsModule.forRoot({ serviceName: 'tool-executor' }),
+    DatabaseModule,
+    ExecutionModule,
+  ],
+})
+export class AppModule {}

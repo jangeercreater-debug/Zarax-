@@ -1,0 +1,30 @@
+import { Module } from '@nestjs/common';
+import { createQdrantClient, VectorStoreService } from '@zarax/qdrant-client';
+import { APP_CONFIG, type AppConfigService } from '@zarax/shared-config';
+
+import type { RagServiceEnv } from '../config/env.schema';
+import { EmbeddingService } from '../embeddings/embedding.service';
+import { KnowledgeBaseController } from './knowledge-base.controller';
+import { KnowledgeBaseService } from './knowledge-base.service';
+
+export const VECTOR_STORE = Symbol('VECTOR_STORE');
+
+@Module({
+  controllers: [KnowledgeBaseController],
+  providers: [
+    EmbeddingService,
+    KnowledgeBaseService,
+    {
+      provide: VECTOR_STORE,
+      useFactory: (config: AppConfigService<RagServiceEnv>, embeddingService: EmbeddingService) => {
+        const client = createQdrantClient({
+          url: config.get('QDRANT_URL'),
+          apiKey: config.get('QDRANT_API_KEY'),
+        });
+        return new VectorStoreService(client, embeddingService.getVectorSize());
+      },
+      inject: [APP_CONFIG, EmbeddingService],
+    },
+  ],
+})
+export class KnowledgeBaseModule {}

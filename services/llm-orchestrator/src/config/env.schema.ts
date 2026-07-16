@@ -1,0 +1,30 @@
+import {
+  aiProvidersEnvSchema,
+  baseEnvSchema,
+  eventBusEnvSchema,
+  jwtEnvSchema,
+  observabilityEnvSchema,
+  postgresEnvSchema,
+  redisEnvSchema,
+} from '@zarax/shared-config';
+import { z } from 'zod';
+
+export const llmOrchestratorEnvSchema = baseEnvSchema
+  .merge(postgresEnvSchema)
+  .merge(redisEnvSchema)
+  .merge(eventBusEnvSchema)
+  .merge(jwtEnvSchema)
+  .merge(observabilityEnvSchema)
+  .merge(aiProvidersEnvSchema)
+  .merge(
+    z.object({
+      DEFAULT_LLM_PROVIDER: z.enum(['anthropic', 'groq', 'openai', 'gemini']).default('anthropic'),
+      TOOL_EXECUTOR_URL: z.string().url(),
+      TOOL_EXECUTOR_INTERNAL_TOKEN: z.string().min(32),
+      // RAG is optional — an empty string disables it (see RagClient.search).
+      RAG_SERVICE_URL: z.string().optional().default(''),
+      RAG_SERVICE_ACCOUNT_TOKEN: z.string().optional().default(''),
+    }),
+  );
+
+export type LlmOrchestratorEnv = z.infer<typeof llmOrchestratorEnvSchema>;
