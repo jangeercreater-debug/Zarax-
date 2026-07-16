@@ -5,6 +5,7 @@ export * from './decorators/public.decorator';
 export * from './decorators/require-permission.decorator';
 export * from './decorators/require-role.decorator';
 export * from './guards/composite-auth.guard';
+export * from './guards/internal-token.guard';
 export * from './guards/permissions.guard';
 export * from './guards/roles.guard';
 export * from './module/auth.module';

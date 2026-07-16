@@ -2,19 +2,19 @@ import {
   baseEnvSchema,
   eventBusEnvSchema,
   jwtEnvSchema,
-  llmProvidersEnvSchema,
+  livekitEnvSchema,
   observabilityEnvSchema,
   postgresEnvSchema,
   redisEnvSchema,
 } from '@zarax/shared-config';
 import type { z } from 'zod';
 
-export const apiEnvSchema = baseEnvSchema
+export const voiceGatewayEnvSchema = baseEnvSchema
   .merge(postgresEnvSchema)
   .merge(redisEnvSchema)
   .merge(jwtEnvSchema)
   .merge(eventBusEnvSchema)
   .merge(observabilityEnvSchema)
-  .merge(llmProvidersEnvSchema);
+  .merge(livekitEnvSchema);
 
-export type ApiEnv = z.infer<typeof apiEnvSchema>;
+export type VoiceGatewayEnv = z.infer<typeof voiceGatewayEnvSchema>;

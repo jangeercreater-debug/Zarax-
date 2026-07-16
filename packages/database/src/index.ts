@@ -5,4 +5,5 @@ export * from './repositories/tenant.repository';
 export * from './repositories/user.repository';
 export * from './repositories/api-key.repository';
 export * from './repositories/service-account.repository';
+export * from './repositories/agent.repository';
 export * from './health/prisma-health-indicator';
