@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
+import Link from 'next/link';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Eye, EyeOff } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -21,6 +24,7 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const login = useLogin();
+  const [showPassword, setShowPassword] = useState(false);
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: '', password: '' },
@@ -70,9 +74,29 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Password</FormLabel>
+                      <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+                        Forgot password?
+                      </Link>
+                    </div>
                     <FormControl>
-                      <Input type="password" autoComplete="current-password" {...field} />
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          autoComplete="current-password"
+                          className="pr-9"
+                          {...field}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword((v) => !v)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -83,6 +107,13 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don&rsquo;t have an account?{' '}
+            <Link href="/signup" className="font-medium text-foreground hover:underline">
+              Create one
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

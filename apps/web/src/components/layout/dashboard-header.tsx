@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { LogOut, Menu } from 'lucide-react';
+import Link from 'next/link';
+import { LogOut, Menu, User } from 'lucide-react';
 
 import { useCurrentTenant, useLogout } from '@/hooks/use-auth';
+import { OrganizationSwitcher } from '@/components/organization/organization-switcher';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,12 +17,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { SidebarNav } from './sidebar-nav';
 
 export function DashboardHeader() {
-  const { data: tenant, isLoading } = useCurrentTenant();
+  const { data: tenant } = useCurrentTenant();
   const logout = useLogout();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
@@ -47,11 +48,7 @@ export function DashboardHeader() {
       </Sheet>
 
       <div className="flex-1">
-        {isLoading ? (
-          <Skeleton className="h-4 w-32" />
-        ) : (
-          <span className="text-sm font-medium text-muted-foreground">{tenant?.name}</span>
-        )}
+        <OrganizationSwitcher />
       </div>
 
       <ThemeToggle />
@@ -66,6 +63,13 @@ export function DashboardHeader() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuLabel>{tenant?.name ?? 'Account'}</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/profile">
+              <User className="mr-2 h-4 w-4" />
+              Profile & security
+            </Link>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => logout.mutate()} disabled={logout.isPending}>
             <LogOut className="mr-2 h-4 w-4" />

@@ -7,7 +7,7 @@ import {
   postgresEnvSchema,
   redisEnvSchema,
 } from '@zarax/shared-config';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 export const apiEnvSchema = baseEnvSchema
   .merge(postgresEnvSchema)
@@ -15,6 +15,12 @@ export const apiEnvSchema = baseEnvSchema
   .merge(jwtEnvSchema)
   .merge(eventBusEnvSchema)
   .merge(observabilityEnvSchema)
-  .merge(llmProvidersEnvSchema);
+  .merge(llmProvidersEnvSchema)
+  .merge(
+    z.object({
+      // Used to build password-reset/email-verification links. Points at apps/web.
+      DASHBOARD_URL: z.string().url().default('http://localhost:3100'),
+    }),
+  );
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

@@ -27,10 +27,21 @@ unversioned — see `docs/production-standards.md` item #3.
 
 | Method | Path                                 | Auth | Description |
 |--------|--------------------------------------|------|--------------|
-| POST   | `/v1/auth/signup`                    | `@Public()` | Creates a tenant + its first (owner) user, returns tokens |
+| POST   | `/v1/auth/signup`                    | `@Public()` | Creates a tenant + its first (owner) user, returns tokens, sends a verification email |
 | POST   | `/v1/auth/login`                     | `@Public()`, stricter rate limit (10/min) | Returns access + refresh tokens |
-| POST   | `/v1/auth/refresh`                   | `@Public()` | Exchanges a refresh token for a new token pair |
+| POST   | `/v1/auth/refresh`                   | `@Public()` | Exchanges a refresh token for a new pair — validates and rotates the underlying session |
+| POST   | `/v1/auth/logout`                    | `@Public()` | Revokes the session behind a refresh token |
+| POST   | `/v1/auth/forgot-password`           | `@Public()`, rate limit (5/min) | Requests a password reset link (same response whether or not the email exists) |
+| POST   | `/v1/auth/reset-password`            | `@Public()` | Resets the password with a token; revokes every existing session |
+| POST   | `/v1/auth/verify-email`              | `@Public()` | Verifies an email address with a token |
+| POST   | `/v1/auth/resend-verification`       | authenticated | Resends the verification email |
+| POST   | `/v1/auth/switch-tenant`             | authenticated | Re-issues tokens scoped to a different organization the user belongs to |
 | GET    | `/v1/tenants/me`                     | any authenticated principal | Current tenant's public info |
+| GET/PATCH | `/v1/users/me`                    | authenticated | Get/update the current user's profile |
+| POST   | `/v1/users/me/change-password`       | authenticated | Changes the password; revokes every *other* session |
+| GET    | `/v1/users/me/tenants`               | authenticated | Every organization the user belongs to (org switcher data) |
+| GET    | `/v1/users/me/sessions`              | authenticated | Active sessions for the current user |
+| DELETE | `/v1/users/me/sessions/:id`          | authenticated | Revoke a specific session |
 | POST   | `/v1/agents`                         | `agents:create` | Create a new agent |
 | GET    | `/v1/agents`                         | `agents:read` | List the tenant's agents |
 | GET    | `/v1/agents/:id`                     | `agents:read` | Get one agent |
@@ -40,6 +51,26 @@ unversioned — see `docs/production-standards.md` item #3.
 | POST   | `/v1/agents/:id/versions/:v/rollback`| `agents:update` | Roll back — creates a new version matching the target, never rewrites history |
 | GET    | `/health`, `/ready`, `/metrics`       | none | From `@zarax/shared-observability` |
 | GET    | `/docs`                               | none | Auto-generated OpenAPI/Swagger UI |
+
+## Session management, in one paragraph
+
+Every login/signup creates a `UserSession` row and embeds its id in both the access and
+refresh tokens (`sessionId` claim). `refresh` validates the session exists and isn't
+revoked *and* rotates the stored refresh-token hash — a stolen, already-used refresh
+token fails this check even if its JWT signature is still valid. `logout` revokes that
+one session. `changePassword` revokes every *other* session (keeps you signed in on the
+device you used to change it); `resetPassword` revokes *all* sessions (a password reset
+implies possible compromise, so nothing should survive it). See
+`packages/database`'s `UserSession` model and `UserSessionRepository`.
+
+## Email delivery — what's real and what isn't
+
+Password-reset and email-verification **tokens** are fully real (generated, hashed,
+expiring, single-use). Actual **email delivery** isn't integrated yet — no provider
+(SES, SendGrid, ...) is wired up. Every link is structured-logged, and outside
+production the API response includes it directly (`devOnlyResetLink`,
+`devOnlyVerificationLink`) so the whole flow is testable end-to-end today. See
+`AuthEmailService` — swapping in a real provider only touches that one file.
 
 ## Agent versioning, in one paragraph
 

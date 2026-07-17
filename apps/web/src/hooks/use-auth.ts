@@ -6,6 +6,18 @@ import { useRouter } from 'next/navigation';
 import { clientRequest } from '@/lib/api-client';
 import type { Tenant } from '@/lib/types';
 
+export function useSignup() {
+  const router = useRouter();
+  return useMutation({
+    mutationFn: (input: { email: string; password: string; fullName: string; tenantName: string; tenantSlug: string }) =>
+      clientRequest<{ success: true }>('/auth/signup', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      router.push('/agents');
+      router.refresh();
+    },
+  });
+}
+
 export function useLogin() {
   const router = useRouter();
   return useMutation({
@@ -28,6 +40,43 @@ export function useLogout() {
       router.push('/login');
       router.refresh();
     },
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (email: string) =>
+      clientRequest<{ success: true; devOnlyResetLink?: string }>('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+  });
+}
+
+export function useResetPassword() {
+  const router = useRouter();
+  return useMutation({
+    mutationFn: (input: { token: string; newPassword: string }) =>
+      clientRequest<{ success: true }>('/auth/reset-password', { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: () => {
+      router.push('/login');
+    },
+  });
+}
+
+export function useVerifyEmail() {
+  return useMutation({
+    mutationFn: (token: string) =>
+      clientRequest<{ success: true }>('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  });
+}
+
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: () =>
+      clientRequest<{ success: true; devOnlyVerificationLink?: string }>('/auth/resend-verification', {
+        method: 'POST',
+      }),
   });
 }
 

@@ -43,6 +43,32 @@ export interface AgentVersion {
   createdAt: string;
 }
 
+/** Mirrors services/api's ProfileResponseDto. */
+export interface Profile {
+  id: string;
+  email: string;
+  fullName: string | null;
+  emailVerified: boolean;
+}
+
+/** Mirrors services/api's MembershipResponseDto. */
+export interface Membership {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  role: string;
+}
+
+/** Mirrors services/api's SessionResponseDto. */
+export interface Session {
+  id: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  isCurrent: boolean;
+}
+
 /** Mirrors the {error:{...}} shape every ZaraX backend service's GlobalExceptionFilter produces. */
 export interface ApiErrorBody {
   error: {

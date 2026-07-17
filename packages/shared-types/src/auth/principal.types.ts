@@ -22,6 +22,11 @@ export interface UserPrincipal extends BasePrincipal {
   type: 'user';
   id: UserId;
   email: string;
+  /** Ties this Principal back to the UserSession row behind its access token — set
+   * only for tokens issued after session tracking was introduced (see
+   * @zarax/shared-auth's AccessTokenPayload). Lets the profile/session-management UI
+   * mark "this is your current session" without an extra round trip. */
+  sessionId?: string;
 }
 
 export interface ApiKeyPrincipal extends BasePrincipal {

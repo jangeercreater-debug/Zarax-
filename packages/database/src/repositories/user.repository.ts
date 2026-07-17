@@ -7,6 +7,14 @@ export interface UserRecord {
   passwordHash: string;
   fullName: string | null;
   isActive: boolean;
+  emailVerified: boolean;
+}
+
+export interface MembershipRecord {
+  tenantId: string;
+  tenantName: string;
+  tenantSlug: string;
+  role: string;
 }
 
 export class UserRepository {
@@ -52,6 +60,40 @@ export class UserRepository {
     await this.prisma.tenantMembership.create({
       data: { userId: params.userId, tenantId: params.tenantId, role: params.role },
     });
+  }
+
+  /** Every tenant this user belongs to — the data behind the organization switcher. */
+  async listMemberships(userId: string): Promise<MembershipRecord[]> {
+    const memberships = await this.prisma.tenantMembership.findMany({
+      where: { userId, tenant: { deletedAt: null } },
+      include: { tenant: true },
+    });
+    return memberships.map((m) => ({
+      tenantId: m.tenantId,
+      tenantName: m.tenant.name,
+      tenantSlug: m.tenant.slug,
+      role: m.role,
+    }));
+  }
+
+  async findMembership(userId: string, tenantId: string): Promise<{ role: string } | null> {
+    const membership = await this.prisma.tenantMembership.findUnique({
+      where: { tenantId_userId: { tenantId, userId } },
+    });
+    return membership ? { role: membership.role } : null;
+  }
+
+  async updateProfile(userId: string, params: { fullName?: string }): Promise<UserRecord> {
+    return this.prisma.user.update({ where: { id: userId }, data: params });
+  }
+
+  /** `newPasswordHash` must already be hashed by the caller (see `create()`'s note). */
+  async updatePassword(userId: string, newPasswordHash: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: newPasswordHash } });
+  }
+
+  async markEmailVerified(userId: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { emailVerified: true } });
   }
 
   /** Soft delete — see docs/data-retention-policy.md. Also deactivates the account

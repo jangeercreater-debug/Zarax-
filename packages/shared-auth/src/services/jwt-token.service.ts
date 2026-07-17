@@ -21,12 +21,19 @@ export interface AccessTokenPayload {
   roles: string[];
   permissions: string[];
   type: 'access';
+  /** See RefreshTokenPayload's sessionId — carried on the access token too so an
+   * authenticated request can identify its own session without a DB lookup. */
+  sessionId?: string;
 }
 
 export interface RefreshTokenPayload {
   sub: string;
   tenantId: string;
   type: 'refresh';
+  /** Ties this token to a UserSession row (see @zarax/database) so it can be looked
+   * up and revoked server-side — optional so services that don't track sessions
+   * (i.e. every AuthModule consumer before this milestone) are unaffected. */
+  sessionId?: string;
 }
 
 @Injectable()
@@ -64,6 +71,7 @@ export class JwtTokenService {
       email: payload.email,
       roles: payload.roles,
       permissions: payload.permissions,
+      sessionId: payload.sessionId,
     };
   }
 }

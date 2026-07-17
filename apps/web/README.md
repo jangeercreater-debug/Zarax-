@@ -38,17 +38,24 @@ Browser → (this app's) /api/agents → services/api's /v1/agents
 ```
 src/
 ├── app/
-│   ├── login/page.tsx           # the one public route
-│   ├── (dashboard)/              # everything behind middleware.ts's auth check
-│   │   └── agents/                # list / new / [id] edit / [id]/versions (rollback)
-│   └── api/                       # server-side proxy to services/api (see above)
+│   ├── login/page.tsx             # public
+│   ├── signup/page.tsx             # public
+│   ├── forgot-password/page.tsx    # public
+│   ├── reset-password/page.tsx     # public (reads ?token=)
+│   ├── verify-email/page.tsx       # public (reads ?token=, auto-submits)
+│   ├── (dashboard)/                # everything behind middleware.ts's auth check
+│   │   ├── agents/                  # list / new / [id] edit / [id]/versions (rollback)
+│   │   └── profile/                 # profile info, change password, active sessions
+│   └── api/                         # server-side proxy to services/api (see above)
 ├── components/
-│   ├── ui/                        # shadcn/ui primitives (hand-vendored source, not an npm package)
-│   ├── agents/                    # agent-specific components (form, list, version timeline)
-│   └── layout/                    # sidebar, header
-├── hooks/                         # React Query hooks — the only place data-fetching logic lives
-├── lib/                           # API clients, cookie helpers, types, cn() utility
-└── middleware.ts                  # redirects to /login if no session cookie is present
+│   ├── ui/                          # shadcn/ui primitives (hand-vendored source, not an npm package)
+│   ├── agents/                      # agent-specific components (form, list, version timeline)
+│   ├── profile/                     # profile form, change-password form, sessions list
+│   ├── organization/                # organization switcher
+│   └── layout/                      # sidebar, header
+├── hooks/                           # React Query hooks — the only place data-fetching logic lives
+├── lib/                             # API clients, cookie helpers, types, cn() utility
+└── middleware.ts                    # redirects to /login if no session cookie is present
 ```
 
 ## Design notes
@@ -62,8 +69,10 @@ version-history timeline (`src/components/agents/version-history.tsx`); everythi
 
 ## What's intentionally not built yet
 
-- **Signup UI** — this milestone's requirements list Login, not Signup; creating a
-  tenant currently requires calling `services/api`'s `/v1/auth/signup` directly.
+- **Real email delivery** — password-reset and email-verification tokens are fully
+  real; actual sending isn't wired to a provider yet. See `services/api`'s README
+  ("Email delivery — what's real and what isn't"). The dev-mode link is surfaced via
+  a toast so the flow is fully testable today.
 - **Advanced agent config** (enabled tools, fallback providers, webhook URLs) — the
   form covers the core fields (prompt, provider, model, RAG toggle); the remaining
   `AgentConfig` fields are set via direct API calls until an "advanced settings"
