@@ -59,6 +59,50 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
     return agents.map(toRecord);
   }
 
+  /** Creates the agent AND its initial (version 1) snapshot in one transaction — every
+   * agent always has at least one AgentVersion row, so listVersions()/rollback always
+   * have a valid target. */
+  async create(params: {
+    tenantId: TenantId;
+    name: string;
+    config: Record<string, unknown>;
+    createdBy?: string;
+  }): Promise<AgentRecord> {
+    return this.prisma.$transaction(async (tx) => {
+      const agent = await tx.agent.create({
+        data: {
+          tenantId: params.tenantId,
+          name: params.name,
+          config: params.config,
+          currentVersion: 1,
+        },
+      });
+
+      await tx.agentVersion.create({
+        data: {
+          agentId: agent.id,
+          tenantId: params.tenantId,
+          version: 1,
+          config: params.config,
+          createdBy: params.createdBy,
+        },
+      });
+
+      return toRecord(agent);
+    });
+  }
+
+  /** Renaming an agent does NOT create a new AgentVersion — versioning tracks
+   * `config` (the prompt/behavior), not display metadata. */
+  async updateName(tenantId: TenantId, agentId: string, name: string): Promise<AgentRecord> {
+    const result = await this.prisma.agent.updateMany({
+      where: { id: agentId, tenantId, deletedAt: null },
+      data: { name },
+    });
+    if (result.count === 0) throw new NotFoundError('Agent', agentId);
+    return this.findByIdForTenantOrThrow(tenantId, agentId);
+  }
+
   /** Soft delete — sets deletedAt rather than removing the row (and everything that
    * references it, e.g. Call history, AgentVersion snapshots, stays intact). */
   async softDelete(tenantId: TenantId, agentId: string): Promise<void> {

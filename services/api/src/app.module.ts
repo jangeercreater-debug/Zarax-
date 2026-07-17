@@ -18,6 +18,7 @@ import { LoggerModule } from '@zarax/shared-logger';
 import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
 import { apiEnvSchema } from './config/env.schema';
+import { AgentsModule } from './modules/agents/agents.module';
 import { UsersAuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 
@@ -72,6 +73,7 @@ const healthIndicatorService = new HealthIndicatorService();
     PrismaClientModule.forRoot(),
     UsersAuthModule,
     TenantsModule,
+    AgentsModule,
   ],
 })
 export class AppModule {}
