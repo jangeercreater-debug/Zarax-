@@ -55,6 +55,20 @@ unversioned — see `docs/production-standards.md` item #3.
 | POST   | `/v1/agents/:id/unpublish`           | `agents:update` | Revert to draft |
 | POST   | `/v1/agents/:id/clone`               | `agents:create` | Duplicate into a new draft — fresh version history, never inherits publish state |
 | POST   | `/v1/agents/:id/test`                | `agents:read`, rate limit (20/min) | Send a message through llm-orchestrator's **real** pipeline (tool loop, RAG, metering) — not persisted |
+| POST   | `/v1/workflows`                      | `workflows:create` | Create a new workflow — draft by default |
+| GET    | `/v1/workflows`                      | `workflows:read` | List the tenant's workflows |
+| GET    | `/v1/workflows/:id`                  | `workflows:read` | Get one workflow |
+| PATCH  | `/v1/workflows/:id`                  | `workflows:update` | Update name/description/definition — a definition change auto-creates a new version |
+| DELETE | `/v1/workflows/:id`                  | `workflows:delete` | Soft-delete a workflow |
+| POST   | `/v1/workflows/:id/publish`          | `workflows:update` | Publish — requires at least one trigger node and one end node |
+| POST   | `/v1/workflows/:id/unpublish`        | `workflows:update` | Revert to draft |
+| GET    | `/v1/workflows/:id/versions`         | `workflows:read` | List every version snapshot, newest first |
+| POST   | `/v1/workflows/:id/versions/:v/rollback` | `workflows:update` | Roll back — creates a new version matching the target |
+| POST   | `/v1/workflows/:id/execute`          | `workflows:execute`, rate limit (20/min) | Trigger a run (works for drafts too — this is "Test Workflow"); actual execution happens in `services/workflow-engine` |
+| GET    | `/v1/workflows/:id/executions`       | `workflows:read` | List execution history, newest first |
+| GET    | `/v1/workflows/:id/executions/:executionId` | `workflows:read` | Get one execution, including its per-node result log |
+| GET    | `/health`, `/ready`, `/metrics`       | none | From `@zarax/shared-observability` |
+| GET    | `/docs`                               | none | Auto-generated OpenAPI/Swagger UI |
 
 ## The Voice Agent Builder's draft/publish model
 
@@ -67,6 +81,8 @@ draft is a completely normal, editable, testable agent, not "not found". Only
 called from exactly one place: `voice-gateway`'s room creation — the actual entry
 point a real caller reaches. Publishing itself requires a system prompt to be set
 (`AgentsService.publish()`), so a live agent can't have empty/undefined behavior.
+`WorkflowRepository`/`WorkflowsService.publish()` follow the identical pattern for
+workflows (requiring a trigger + end node instead of a system prompt).
 
 ## "Test Agent" reuses the real pipeline — it doesn't reimplement it
 
@@ -79,8 +95,15 @@ duplicated business logic. **Operational note**: this requires a `ServiceAccount
 provisioned for services/api to call llm-orchestrator with (same pattern
 `RAG_SERVICE_ACCOUNT_TOKEN` already requires for llm-orchestrator → rag-service) —
 see `LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN` in `.env.example`.
-| GET    | `/health`, `/ready`, `/metrics`       | none | From `@zarax/shared-observability` |
-| GET    | `/docs`                               | none | Auto-generated OpenAPI/Swagger UI |
+
+## Workflows — this service is the CRUD/trigger layer only
+
+`services/api` owns workflow authoring (CRUD, versioning, publish/draft) and
+*triggering* a run — it does not execute workflows itself. `WorkflowsService.execute()`
+creates a `WorkflowExecution` row and enqueues a job on the `workflow-execution` queue
+(`@zarax/job-queue`); `services/workflow-engine` is the consumer that actually walks
+the node graph. See that service's own README for the full execution model (node
+executors, the Delay node's non-blocking pause/resume, what's honestly not built yet).
 
 ## Session management, in one paragraph
 

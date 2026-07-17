@@ -25,6 +25,7 @@
     "@zarax/database": "workspace:*",
     "@zarax/event-bus": "workspace:*",
     "@zarax/feature-flags": "workspace:*",
+    "@zarax/job-queue": "workspace:*",
     "@zarax/redis-client": "workspace:*",
     "@zarax/resilience": "workspace:*",
     "@zarax/shared-auth": "workspace:*",

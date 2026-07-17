@@ -43,6 +43,21 @@ describe('JobQueue', () => {
     );
   });
 
+  it('passes a delay option through when provided — used by the Workflow Builder Delay node', async () => {
+    const queue = new JobQueue({ name: 'test-queue', redisUrl: 'redis://localhost' });
+    await queue.add('resume', { foo: 'bar' }, { delayMs: 60_000 });
+
+    expect(addMock).toHaveBeenCalledWith('resume', { foo: 'bar' }, expect.objectContaining({ delay: 60_000 }));
+  });
+
+  it('omits the delay option entirely when not provided (BullMQ treats absence differently from delay: 0)', async () => {
+    const queue = new JobQueue({ name: 'test-queue', redisUrl: 'redis://localhost' });
+    await queue.add('do-thing', { foo: 'bar' });
+
+    const callArgs = addMock.mock.calls[0];
+    expect(callArgs[2]).not.toHaveProperty('delay');
+  });
+
   it('registers a "failed" handler when process() is called', () => {
     const queue = new JobQueue({ name: 'test-queue', redisUrl: 'redis://localhost' });
     queue.process(async () => undefined);

@@ -389,3 +389,71 @@ model KnowledgeBaseDocument {
   @@index([tenantId, createdAt])
   @@map("knowledge_base_documents")
 }
+
+// ---------------------------------------------------------------------------
+// Workflow — a visual, node-based automation. `definition` holds the full graph
+// ({ nodes: [...], edges: [...] }) as JSON, schemaless at the DB level since the
+// node/edge shape is owned by the frontend's React Flow editor and the
+// workflow-engine's node executors, not by Postgres. Same draft/publish model as
+// Agent: `isActive` doubles as the publish flag, false (draft) by default.
+// ---------------------------------------------------------------------------
+model Workflow {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  name           String
+  description    String?
+  isActive       Boolean   @default(false) @map("is_active")
+  definition     Json      @default("{}")
+  currentVersion Int       @default(1) @map("current_version")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  versions   WorkflowVersion[]
+  executions WorkflowExecution[]
+
+  @@index([tenantId])
+  @@map("workflows")
+}
+
+// Immutable snapshot history — same versioning philosophy as AgentVersion (rollback
+// creates a new version matching an old one; history is never rewritten).
+model WorkflowVersion {
+  id         String   @id @default(uuid())
+  workflowId String   @map("workflow_id")
+  tenantId   String   @map("tenant_id")
+  version    Int
+  definition Json
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@unique([workflowId, version])
+  @@index([tenantId])
+  @@map("workflow_versions")
+}
+
+// One row per run. `nodeExecutions` is an embedded, ordered JSON log of each node's
+// result (input/output/status/timing) — a separate per-node table would add
+// relational complexity a single tenant-scoped JSON column doesn't need at this
+// scale (a run's node count is small, typically under a few dozen).
+model WorkflowExecution {
+  id             String    @id @default(uuid())
+  workflowId     String    @map("workflow_id")
+  tenantId       String    @map("tenant_id")
+  status         String    @default("pending") // 'pending' | 'running' | 'completed' | 'failed'
+  triggerType    String    @map("trigger_type") // 'manual' | 'event' (event-based auto-triggering is not yet built — see services/workflow-engine's README)
+  input          Json      @default("{}")
+  output         Json?
+  errorMessage   String?   @map("error_message")
+  nodeExecutions Json      @default("[]") @map("node_executions")
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, workflowId])
+  @@index([tenantId, startedAt])
+  @@map("workflow_executions")
+}

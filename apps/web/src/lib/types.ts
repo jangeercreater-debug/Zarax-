@@ -110,6 +110,71 @@ export interface AgentFeatureFlag {
   enabled: boolean;
 }
 
+/** Mirrors services/api's WorkflowNodeDto. */
+export interface WorkflowNode {
+  id: string;
+  type: 'trigger' | 'ai_agent' | 'knowledge_base' | 'condition' | 'delay' | 'webhook' | 'http_request' | 'email' | 'end';
+  position: { x: number; y: number };
+  data: Record<string, unknown>;
+  label?: string;
+}
+
+/** Mirrors services/api's WorkflowEdgeDto. */
+export interface WorkflowEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+export interface WorkflowDefinition {
+  nodes: WorkflowNode[];
+  edges: WorkflowEdge[];
+}
+
+/** Mirrors services/api's WorkflowResponseDto. */
+export interface Workflow {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  definition: WorkflowDefinition;
+  currentVersion: number;
+}
+
+/** Mirrors services/api's WorkflowVersionResponseDto. */
+export interface WorkflowVersion {
+  id: string;
+  version: number;
+  definition: WorkflowDefinition;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** Mirrors services/api's WorkflowExecutionResponseDto. */
+export interface WorkflowExecution {
+  id: string;
+  workflowId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  triggerType: 'manual' | 'event';
+  input: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+  errorMessage: string | null;
+  nodeExecutions: Array<{
+    nodeId: string;
+    nodeType: string;
+    status: 'completed' | 'failed' | 'skipped';
+    input: unknown;
+    output: unknown;
+    errorMessage?: string;
+    startedAt: string;
+    completedAt: string;
+  }>;
+  startedAt: string;
+  completedAt: string | null;
+}
+
 /** Mirrors the {error:{...}} shape every ZaraX backend service's GlobalExceptionFilter produces. */
 export interface ApiErrorBody {
   error: {

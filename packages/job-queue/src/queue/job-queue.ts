@@ -46,12 +46,13 @@ export class JobQueue<TData, TResult = void> {
     this.deadLetterQueue = new Queue(`${options.name}:dead-letter`, { connection });
   }
 
-  async add(jobName: string, data: TData): Promise<void> {
+  async add(jobName: string, data: TData, options: { delayMs?: number } = {}): Promise<void> {
     await this.queue.add(jobName, data, {
       attempts: this.options.attempts ?? 5,
       backoff: { type: 'exponential', delay: this.options.backoffDelayMs ?? 2000 },
       removeOnComplete: { count: 1000 },
       removeOnFail: false, // stays visible in the main queue's failed list until moved to DLQ
+      ...(options.delayMs ? { delay: options.delayMs } : {}),
     });
   }
 

@@ -18,6 +18,10 @@ const queue = new JobQueue<MyJobData>({
 // Producer side (e.g. inside a request handler):
 await queue.add('reminder', { userId, message });
 
+// Delayed — e.g. the Workflow Builder's Delay node re-enqueues a continuation job
+// rather than blocking a worker thread with a long sleep:
+await queue.add('resume', { executionId }, { delayMs: 5 * 60_000 });
+
 // Worker side (a dedicated process, not inline in a request handler):
 queue.process(async (job) => {
   await sendReminder(job.data);
