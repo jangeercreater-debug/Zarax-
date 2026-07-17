@@ -69,4 +69,22 @@ export class VectorStoreService {
     const collectionName = tenantCollectionName(tenantId, purpose);
     await this.client.delete(collectionName, { points: pointIds, wait: true });
   }
+
+  /** Deletes every point whose payload.documentId matches — used for document delete
+   * and re-index (clear stale chunks before upserting fresh ones), so callers never
+   * need to track individual chunk point IDs themselves. */
+  async deleteByDocumentId(
+    tenantId: TenantId,
+    purpose: VectorCollectionPurpose,
+    documentId: string,
+  ): Promise<void> {
+    const collectionName = tenantCollectionName(tenantId, purpose);
+    const { exists } = await this.client.collectionExists(collectionName);
+    if (!exists) return;
+
+    await this.client.delete(collectionName, {
+      filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
+      wait: true,
+    });
+  }
 }

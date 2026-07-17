@@ -13,5 +13,6 @@ export * from './repositories/usage-event.repository';
 export * from './repositories/password-reset-token.repository';
 export * from './repositories/email-verification-token.repository';
 export * from './repositories/user-session.repository';
+export * from './repositories/knowledge-base-document.repository';
 export * from './health/prisma-health-indicator';
 export * from './module/prisma-client.module';

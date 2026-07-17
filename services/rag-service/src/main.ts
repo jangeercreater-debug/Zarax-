@@ -12,7 +12,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { GlobalExceptionFilter } from '@zarax/shared-errors';
 import { correlationIdMiddleware, ZaraxLogger } from '@zarax/shared-logger';
-import { setupGracefulShutdown } from '@zarax/shared-observability';
+import { applyApiVersioning, setupGracefulShutdown, setupOpenApi } from '@zarax/shared-observability';
 
 import { AppModule } from './app.module';
 /* eslint-enable import/order */
@@ -33,6 +33,12 @@ async function bootstrap(): Promise<void> {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.enableCors({ origin: true, credentials: true });
+
+  applyApiVersioning(app);
+  setupOpenApi(app, {
+    serviceName: 'ZaraX RAG Service',
+    description: 'Knowledge base ingestion (PDF/DOCX/TXT/URL) and semantic search.',
+  });
 
   const port = Number(process.env.PORT ?? 3005);
   await app.listen(port);

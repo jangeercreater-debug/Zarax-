@@ -4,6 +4,8 @@ import { APP_CONFIG, type AppConfigService } from '@zarax/shared-config';
 
 import type { RagServiceEnv } from '../config/env.schema';
 import { EmbeddingService } from '../embeddings/embedding.service';
+import { UrlExtractorService } from '../extractors/url-extractor';
+import { DocumentProcessingService } from '../processing/document-processing.service';
 import { KnowledgeBaseController } from './knowledge-base.controller';
 import { KnowledgeBaseService } from './knowledge-base.service';
 
@@ -13,6 +15,8 @@ export const VECTOR_STORE = Symbol('VECTOR_STORE');
   controllers: [KnowledgeBaseController],
   providers: [
     EmbeddingService,
+    UrlExtractorService,
+    DocumentProcessingService,
     KnowledgeBaseService,
     {
       provide: VECTOR_STORE,

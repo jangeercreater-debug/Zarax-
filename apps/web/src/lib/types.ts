@@ -69,6 +69,26 @@ export interface Session {
   isCurrent: boolean;
 }
 
+/** Mirrors services/rag-service's DocumentResponseDto. */
+export interface KnowledgeBaseDocument {
+  id: string;
+  name: string;
+  sourceType: 'pdf' | 'docx' | 'txt' | 'url';
+  sourceUrl: string | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  chunkCount: number;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Mirrors services/rag-service's SearchResultDto. */
+export interface KnowledgeBaseSearchResult {
+  text: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
 /** Mirrors the {error:{...}} shape every ZaraX backend service's GlobalExceptionFilter produces. */
 export interface ApiErrorBody {
   error: {

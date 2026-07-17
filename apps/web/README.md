@@ -10,15 +10,19 @@ react-hook-form + zod, next-themes (dark/light/system).
 ## Architecture — why there's a `/api` folder in a frontend app
 
 `apps/gateway` (the intended long-term single entry point for all clients — see
-`docs/architecture.md`) doesn't exist yet. Rather than have the browser call
-`services/api` directly (which would mean shipping the backend URL and, worse, the raw
-JWT to client-side JavaScript — an XSS risk), this app's own Next.js **Route Handlers**
-(`src/app/api/**`) act as a thin server-side proxy:
+`docs/architecture.md`) doesn't exist yet. Rather than have the browser call backend
+services directly (which would mean shipping their URLs and, worse, the raw JWT to
+client-side JavaScript — an XSS risk), this app's own Next.js **Route Handlers**
+(`src/app/api/**`) act as a thin server-side proxy — currently to two backend
+services (`BACKEND_URL` → `services/api` for auth/agents/users, `RAG_SERVICE_URL` →
+`services/rag-service` for the knowledge base), until `apps/gateway` unifies them
+behind one URL:
 
 ```
-Browser → (this app's) /api/agents → services/api's /v1/agents
-          ↑ React Query calls this   ↑ Route Handler calls this, using the
-            (same-origin, no CORS)     access token from an httpOnly cookie
+Browser → (this app's) /api/agents         → services/api's     /v1/agents
+Browser → (this app's) /api/knowledge-base/* → services/rag-service's /v1/documents, /v1/search
+          ↑ React Query calls these           ↑ Route Handlers call these, using the
+            (same-origin, no CORS)               access token from an httpOnly cookie
 ```
 
 - The browser **never sees the access/refresh tokens** — they live in httpOnly,
@@ -45,11 +49,13 @@ src/
 │   ├── verify-email/page.tsx       # public (reads ?token=, auto-submits)
 │   ├── (dashboard)/                # everything behind middleware.ts's auth check
 │   │   ├── agents/                  # list / new / [id] edit / [id]/versions (rollback)
+│   │   ├── knowledge-base/          # upload (drag & drop), documents, search
 │   │   └── profile/                 # profile info, change password, active sessions
-│   └── api/                         # server-side proxy to services/api (see above)
+│   └── api/                         # server-side proxy to backend services (see above)
 ├── components/
 │   ├── ui/                          # shadcn/ui primitives (hand-vendored source, not an npm package)
 │   ├── agents/                      # agent-specific components (form, list, version timeline)
+│   ├── knowledge-base/              # upload dropzone, document list, search panel
 │   ├── profile/                     # profile form, change-password form, sessions list
 │   ├── organization/                # organization switcher
 │   └── layout/                      # sidebar, header

@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bot } from 'lucide-react';
+import { Bot, Library } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { href: '/agents', label: 'Agents', icon: Bot },
+  { href: '/knowledge-base', label: 'Knowledge Base', icon: Library },
   // Additional sections (Calls, Analytics, Settings, ...) land here as they're built —
   // kept to what's actually implemented today rather than linking to empty pages.
 ] satisfies Array<{ href: string; label: string; icon: typeof Bot }>;

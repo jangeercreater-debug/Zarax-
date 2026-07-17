@@ -360,3 +360,29 @@ model UserSession {
   @@index([userId])
   @@map("user_sessions")
 }
+
+// ---------------------------------------------------------------------------
+// Knowledge base documents — tracks every uploaded/crawled source (PDF, DOCX,
+// TXT, URL) through the ingestion pipeline. `extractedText` is stored (not the
+// original file bytes — there's no object storage service in this project) so
+// re-index can re-chunk/re-embed without needing the original upload again.
+// The actual chunks/vectors live in Qdrant, keyed by this row's id
+// (payload.documentId) — see @zarax/qdrant-client's deleteByDocumentId.
+// ---------------------------------------------------------------------------
+model KnowledgeBaseDocument {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  name          String
+  sourceType    String    @map("source_type") // 'pdf' | 'docx' | 'txt' | 'url'
+  sourceUrl     String?   @map("source_url") // only set for sourceType 'url'
+  extractedText String?   @map("extracted_text") @db.Text
+  status        String    @default("pending") // 'pending' | 'processing' | 'completed' | 'failed'
+  chunkCount    Int       @default(0) @map("chunk_count")
+  errorMessage  String?   @map("error_message")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("knowledge_base_documents")
+}
