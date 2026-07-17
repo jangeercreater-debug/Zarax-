@@ -20,6 +20,21 @@ export const apiEnvSchema = baseEnvSchema
     z.object({
       // Used to build password-reset/email-verification links. Points at apps/web.
       DASHBOARD_URL: z.string().url().default('http://localhost:3100'),
+
+      // "Test Agent" reuses llm-orchestrator's real conversation pipeline via HTTP
+      // (see modules/agents/clients/llm-orchestrator.client.ts) rather than
+      // reimplementing any of its tool-calling/RAG/metering logic here.
+      LLM_ORCHESTRATOR_URL: z.string().url().default('http://localhost:3006'),
+      // A ServiceAccount-issued token services/api authenticates to llm-orchestrator
+      // with — same mechanism llm-orchestrator itself uses to call rag-service.
+      LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN: z.string().min(1),
+
+      // Populates the Voice Agent Builder's tool multi-select from tool-executor's
+      // real catalog instead of a hardcoded list.
+      TOOL_EXECUTOR_URL: z.string().url().default('http://localhost:3004'),
+      // Must match tool-executor's own INTERNAL_SERVICE_TOKEN value — the same shared
+      // secret InternalTokenGuard checks for stt-service/tts-service/tool-executor.
+      TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN: z.string().min(32),
     }),
   );
 

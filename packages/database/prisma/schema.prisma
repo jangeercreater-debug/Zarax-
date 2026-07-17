@@ -132,15 +132,18 @@ model ServiceAccount {
 }
 
 // ---------------------------------------------------------------------------
-// Agent / Call — minimal foundation models. Fleshed out in the phase that
-// builds services/api and the agent-builder UI; kept here now so
-// event contracts (CallStartedEvent.agentId, etc.) have a real referent.
+// Agent / Call — Agent is the full Voice Agent Builder model (M7E); Call remains a
+// minimal foundation referent for event contracts (CallStartedEvent.agentId, etc.).
 // ---------------------------------------------------------------------------
 model Agent {
   id        String   @id @default(uuid())
   tenantId  String   @map("tenant_id")
   name      String
-  isActive  Boolean  @default(true) @map("is_active")
+  /** Doubles as the publish/draft flag — see services/api's Voice Agent Builder
+   * (AgentsService.publish()/unpublish()). false ("draft") by default: a newly
+   * created agent isn't reachable by real callers until explicitly published
+   * (voice-gateway's room creation calls AgentRepository.assertPublishedForTenant()). */
+  isActive  Boolean  @default(false) @map("is_active")
   config    Json     @default("{}")
   /** Incremented on every AgentRepository.createVersion() call — the "current"
    * version number, mirrored into the latest AgentVersion row. */

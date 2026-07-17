@@ -42,13 +42,43 @@ unversioned — see `docs/production-standards.md` item #3.
 | GET    | `/v1/users/me/tenants`               | authenticated | Every organization the user belongs to (org switcher data) |
 | GET    | `/v1/users/me/sessions`              | authenticated | Active sessions for the current user |
 | DELETE | `/v1/users/me/sessions/:id`          | authenticated | Revoke a specific session |
-| POST   | `/v1/agents`                         | `agents:create` | Create a new agent |
-| GET    | `/v1/agents`                         | `agents:read` | List the tenant's agents |
+| POST   | `/v1/agents`                         | `agents:create` | Create a new agent — draft (`isActive: false`) by default; pass `publishOnCreate: true` to publish immediately |
+| GET    | `/v1/agents`                         | `agents:read` | List the tenant's agents (drafts and published) |
+| GET    | `/v1/agents/tools-catalog`           | `agents:read` | Real tool catalog proxied from tool-executor, for the builder's tool multi-select |
+| GET    | `/v1/agents/feature-flags`           | `agents:read` | Voice-agent-related feature flags for the tenant (via `@zarax/feature-flags`) |
 | GET    | `/v1/agents/:id`                     | `agents:read` | Get one agent |
 | PATCH  | `/v1/agents/:id`                     | `agents:update` | Update name and/or config — a config change auto-creates a new version |
 | DELETE | `/v1/agents/:id`                     | `agents:delete` | Soft-delete an agent |
 | GET    | `/v1/agents/:id/versions`            | `agents:read` | List every version snapshot, newest first |
 | POST   | `/v1/agents/:id/versions/:v/rollback`| `agents:update` | Roll back — creates a new version matching the target, never rewrites history |
+| POST   | `/v1/agents/:id/publish`             | `agents:update` | Publish — requires a system prompt to be set; makes the agent reachable by real calls |
+| POST   | `/v1/agents/:id/unpublish`           | `agents:update` | Revert to draft |
+| POST   | `/v1/agents/:id/clone`               | `agents:create` | Duplicate into a new draft — fresh version history, never inherits publish state |
+| POST   | `/v1/agents/:id/test`                | `agents:read`, rate limit (20/min) | Send a message through llm-orchestrator's **real** pipeline (tool loop, RAG, metering) — not persisted |
+
+## The Voice Agent Builder's draft/publish model
+
+`Agent.isActive` doubles as the publish flag (`false` = draft, `true` = published) —
+there's no separate status column, since the two concepts are the same thing. New
+agents start as drafts. `AgentRepository.findByIdForTenantOrThrow()` (used by every
+dashboard CRUD operation, and by "Test Agent") does **not** gate on `isActive` — a
+draft is a completely normal, editable, testable agent, not "not found". Only
+`AgentRepository.assertPublishedForTenant()` enforces "must be published", and it's
+called from exactly one place: `voice-gateway`'s room creation — the actual entry
+point a real caller reaches. Publishing itself requires a system prompt to be set
+(`AgentsService.publish()`), so a live agent can't have empty/undefined behavior.
+
+## "Test Agent" reuses the real pipeline — it doesn't reimplement it
+
+`POST /agents/:id/test` calls llm-orchestrator's own `/conversations/:callId/turns`
+endpoint via a small `LlmOrchestratorClient` (same shape as llm-orchestrator's own
+`RagClient` — `ResilientHttpClient` + a `X-Service-Account-Token` header), using a
+fresh random `callId` each time. Every test message goes through the exact same
+tool-calling loop, RAG augmentation, and usage/cost metering a real call would — zero
+duplicated business logic. **Operational note**: this requires a `ServiceAccount`
+provisioned for services/api to call llm-orchestrator with (same pattern
+`RAG_SERVICE_ACCOUNT_TOKEN` already requires for llm-orchestrator → rag-service) —
+see `LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN` in `.env.example`.
 | GET    | `/health`, `/ready`, `/metrics`       | none | From `@zarax/shared-observability` |
 | GET    | `/docs`                               | none | Auto-generated OpenAPI/Swagger UI |
 

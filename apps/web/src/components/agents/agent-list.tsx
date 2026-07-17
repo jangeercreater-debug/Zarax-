@@ -109,7 +109,7 @@ export function AgentList({ agents }: { agents: Agent[] }) {
                 </TableCell>
                 <TableCell>
                   <Badge variant={agent.isActive ? 'success' : 'secondary'}>
-                    {agent.isActive ? 'Active' : 'Inactive'}
+                    {agent.isActive ? 'Published' : 'Draft'}
                   </Badge>
                 </TableCell>
                 <TableCell>
@@ -131,7 +131,7 @@ export function AgentList({ agents }: { agents: Agent[] }) {
                 <div className="mt-1 flex items-center gap-2">
                   <Badge variant="secondary">v{agent.currentVersion}</Badge>
                   <Badge variant={agent.isActive ? 'success' : 'secondary'}>
-                    {agent.isActive ? 'Active' : 'Inactive'}
+                    {agent.isActive ? 'Published' : 'Draft'}
                   </Badge>
                 </div>
               </Link>

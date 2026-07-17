@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient, Agent as PrismaAgent } from '@prisma/client';
-import { NotFoundError } from '@zarax/shared-errors';
+import { NotFoundError, ValidationError } from '@zarax/shared-errors';
 import type { TenantId } from '@zarax/shared-types';
 
 import { TenantScopedRepository } from './tenant-scoped.repository';
@@ -50,7 +50,22 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
   async findByIdForTenantOrThrow(tenantId: TenantId, agentId: string): Promise<AgentRecord> {
     const agent = await this.findByIdForTenant(tenantId, agentId);
     if (!agent) throw new NotFoundError('Agent', agentId);
-    if (!agent.isActive) throw new NotFoundError('Agent', agentId);
+    return agent;
+  }
+
+  /** Used specifically where "must be live" actually matters — today, only
+   * voice-gateway's room creation (the one place a real caller reaches an agent).
+   * Every other consumer (dashboard CRUD, test calls, tool execution) uses
+   * findByIdForTenantOrThrow, which a draft (isActive: false) satisfies normally —
+   * a draft is a completely ordinary, editable, testable agent; it just can't take
+   * real calls yet. */
+  async assertPublishedForTenant(tenantId: TenantId, agentId: string): Promise<AgentRecord> {
+    const agent = await this.findByIdForTenantOrThrow(tenantId, agentId);
+    if (!agent.isActive) {
+      throw new ValidationError(
+        `Agent '${agentId}' is not published yet — publish it before starting a call.`,
+      );
+    }
     return agent;
   }
 
@@ -61,12 +76,15 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
 
   /** Creates the agent AND its initial (version 1) snapshot in one transaction — every
    * agent always has at least one AgentVersion row, so listVersions()/rollback always
-   * have a valid target. */
+   * have a valid target. `isActive` defaults to false (draft) — see
+   * docs/production-standards.md's Voice Agent Builder section: a newly created
+   * agent should not be reachable by real callers until explicitly published. */
   async create(params: {
     tenantId: TenantId;
     name: string;
     config: Record<string, unknown>;
     createdBy?: string;
+    isActive?: boolean;
   }): Promise<AgentRecord> {
     return this.prisma.$transaction(async (tx) => {
       const agent = await tx.agent.create({
@@ -75,6 +93,7 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
           name: params.name,
           config: params.config,
           currentVersion: 1,
+          isActive: params.isActive ?? false,
         },
       });
 
@@ -90,6 +109,18 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
 
       return toRecord(agent);
     });
+  }
+
+  /** Publish/unpublish — toggles `isActive` directly, independent of soft-delete.
+   * Never creates a new AgentVersion (this is a status change, not a config change —
+   * same principle as updateName). */
+  async setPublished(tenantId: TenantId, agentId: string, isActive: boolean): Promise<AgentRecord> {
+    const result = await this.prisma.agent.updateMany({
+      where: { id: agentId, tenantId, deletedAt: null },
+      data: { isActive },
+    });
+    if (result.count === 0) throw new NotFoundError('Agent', agentId);
+    return this.findByIdForTenantOrThrow(tenantId, agentId);
   }
 
   /** Renaming an agent does NOT create a new AgentVersion — versioning tracks

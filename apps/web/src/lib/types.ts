@@ -15,10 +15,18 @@ export interface Tenant {
 
 /** Mirrors services/llm-orchestrator's AgentRuntimeConfig / services/api's AgentConfigDto. */
 export interface AgentConfig {
+  description?: string;
   systemPrompt?: string;
+  welcomeMessage?: string;
   provider?: 'anthropic' | 'groq' | 'openai' | 'gemini';
   fallbackProviders?: Array<'anthropic' | 'groq' | 'openai' | 'gemini'>;
   model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  responseStyle?: 'concise' | 'balanced' | 'detailed';
+  interruptSensitivity?: 'low' | 'medium' | 'high';
+  voiceId?: string;
+  sttModel?: string;
   enabledTools?: string[];
   ragEnabled?: boolean;
   maxToolIterations?: number;
@@ -87,6 +95,19 @@ export interface KnowledgeBaseSearchResult {
   text: string;
   score: number;
   metadata: Record<string, unknown>;
+}
+
+/** Mirrors services/api's ToolCatalogEntry (proxied from tool-executor). */
+export interface ToolCatalogEntry {
+  name: string;
+  description: string;
+}
+
+/** Mirrors services/api's feature-flags endpoint response. */
+export interface AgentFeatureFlag {
+  key: string;
+  label: string;
+  enabled: boolean;
 }
 
 /** Mirrors the {error:{...}} shape every ZaraX backend service's GlobalExceptionFilter produces. */

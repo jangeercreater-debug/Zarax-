@@ -78,3 +78,45 @@ export function useRollbackAgent(id: string) {
     },
   });
 }
+
+export function usePublishAgent(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => clientRequest<Agent>(`/agents/${id}/publish`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: agentsKey });
+      void queryClient.invalidateQueries({ queryKey: agentKey(id) });
+    },
+  });
+}
+
+export function useUnpublishAgent(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => clientRequest<Agent>(`/agents/${id}/unpublish`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: agentsKey });
+      void queryClient.invalidateQueries({ queryKey: agentKey(id) });
+    },
+  });
+}
+
+export function useCloneAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clientRequest<Agent>(`/agents/${id}/clone`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: agentsKey });
+    },
+  });
+}
+
+export function useTestAgent(id: string) {
+  return useMutation({
+    mutationFn: (message: string) =>
+      clientRequest<{ response: string; shouldEndCall: boolean; endCallReason?: string }>(
+        `/agents/${id}/test`,
+        { method: 'POST', body: JSON.stringify({ message }) },
+      ),
+  });
+}

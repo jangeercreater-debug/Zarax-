@@ -19,6 +19,16 @@ import type { ConversationTurnResponseDto } from './dto/conversation-turn-respon
 const FALLBACK_RESPONSE_TEXT =
   "I'm having trouble completing that request right now — could you try again in a moment?";
 
+/** How `responseStyle` actually takes effect — providers have no first-class
+ * "response style" API parameter, so this is folded into the system prompt as a
+ * plain-language instruction. Only applied on the first turn (where the system
+ * prompt is seeded) — same as the system prompt itself. */
+const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle']>, string> = {
+  concise: 'Keep your responses brief and to the point — a sentence or two where possible.',
+  balanced: '',
+  detailed: 'Feel free to give thorough, detailed responses that fully address the question.',
+};
+
 @Injectable()
 export class ConversationOrchestratorService {
   private readonly agentRepository: AgentRepository;
@@ -53,7 +63,11 @@ export class ConversationOrchestratorService {
     let history = await this.conversationState.getHistory(tenantId, callId);
 
     if (history.length === 0 && runtimeConfig.systemPrompt) {
-      history = [{ role: 'system', content: runtimeConfig.systemPrompt }];
+      const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
+      const systemPrompt = styleHint
+        ? `${runtimeConfig.systemPrompt}\n\n${styleHint}`
+        : runtimeConfig.systemPrompt;
+      history = [{ role: 'system', content: systemPrompt }];
     }
 
     if (runtimeConfig.ragEnabled ?? AGENT_RUNTIME_CONFIG_DEFAULTS.ragEnabled) {
@@ -71,6 +85,8 @@ export class ConversationOrchestratorService {
       provider,
       model,
       fallbackProviders: runtimeConfig.fallbackProviders,
+      temperature: runtimeConfig.temperature,
+      maxTokens: runtimeConfig.maxTokens,
       maxIterations,
       history,
       tools,
@@ -113,6 +129,8 @@ export class ConversationOrchestratorService {
     provider: NonNullable<AgentRuntimeConfig['provider']>;
     model: string;
     fallbackProviders?: AgentRuntimeConfig['fallbackProviders'];
+    temperature?: number;
+    maxTokens?: number;
     maxIterations: number;
     history: ChatMessage[];
     tools: Awaited<ReturnType<ToolCatalogClient['getAvailableTools']>> | undefined;
@@ -133,11 +151,15 @@ export class ConversationOrchestratorService {
             model: params.model,
             messages: history,
             tools: params.tools,
+            temperature: params.temperature,
+            maxTokens: params.maxTokens,
           })
         : await this.aiRegistry.get(params.provider).complete({
             model: params.model,
             messages: history,
             tools: params.tools,
+            temperature: params.temperature,
+            maxTokens: params.maxTokens,
           });
 
       // Cost/usage tracking — see docs/production-standards.md item #4/#5. Recording

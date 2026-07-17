@@ -26,10 +26,13 @@ export class RoomsService {
     tenantId: TenantId,
     dto: CreateRoomDto,
   ): Promise<RoomTokenResponseDto> {
-    // Confirms the agent exists, belongs to this tenant, and is active — the
-    // tenant-scoping is enforced by AgentRepository (extends TenantScopedRepository),
-    // not by a filter this method could forget to apply.
-    await this.agentRepository.findByIdForTenantOrThrow(tenantId, dto.agentId);
+    // Confirms the agent exists, belongs to this tenant, and is published (isActive) —
+    // the tenant-scoping is enforced by AgentRepository (extends
+    // TenantScopedRepository), not by a filter this method could forget to apply. A
+    // draft agent is a normal, valid agent everywhere else (dashboard, test calls) —
+    // this is specifically the one place "must be live" is enforced, since it's the
+    // entry point a real caller reaches.
+    await this.agentRepository.assertPublishedForTenant(tenantId, dto.agentId);
 
     const callId = uuidv4();
     const roomName = encodeRoomName({ tenantId, agentId: dto.agentId, callId });

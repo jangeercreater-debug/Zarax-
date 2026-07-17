@@ -1,4 +1,4 @@
-import { NotFoundError } from '@zarax/shared-errors';
+import { NotFoundError, ValidationError } from '@zarax/shared-errors';
 import { asTenantId, asUserId, type UserPrincipal } from '@zarax/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -106,12 +106,24 @@ describe('AgentsService', () => {
   const tenantId = asTenantId('tenant-1');
   let prisma: ReturnType<typeof buildFakePrisma>;
   let auditLogService: { record: ReturnType<typeof vi.fn> };
+  let featureFlagService: { isEnabled: ReturnType<typeof vi.fn> };
+  let llmOrchestratorClient: { testTurn: ReturnType<typeof vi.fn> };
+  let toolCatalogClient: { listTools: ReturnType<typeof vi.fn> };
   let service: AgentsService;
 
   beforeEach(() => {
     prisma = buildFakePrisma();
     auditLogService = { record: vi.fn() };
-    service = new AgentsService(prisma as never, auditLogService as never);
+    featureFlagService = { isEnabled: vi.fn().mockResolvedValue(false) };
+    llmOrchestratorClient = { testTurn: vi.fn() };
+    toolCatalogClient = { listTools: vi.fn() };
+    service = new AgentsService(
+      prisma as never,
+      auditLogService as never,
+      featureFlagService as never,
+      llmOrchestratorClient as never,
+      toolCatalogClient as never,
+    );
   });
 
   it('creates an agent with an initial version and records an audit event', async () => {
@@ -204,5 +216,120 @@ describe('AgentsService', () => {
 
     const otherTenant = asTenantId('tenant-2');
     await expect(service.get(otherTenant, agent.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it('creates an agent as a draft (isActive: false) by default', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, { name: 'Agent' });
+    expect(agent.isActive).toBe(false);
+  });
+
+  it('publishOnCreate: true creates an already-published agent', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, {
+      name: 'Agent',
+      config: { systemPrompt: 'Hello' },
+      publishOnCreate: true,
+    });
+    expect(agent.isActive).toBe(true);
+  });
+
+  it('publish rejects an agent with no system prompt', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, { name: 'Agent' }); // no config at all
+
+    await expect(service.publish(tenantId, principal, agent.id)).rejects.toThrow(ValidationError);
+  });
+
+  it('publish succeeds once a system prompt is set, and records an audit event', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, {
+      name: 'Agent',
+      config: { systemPrompt: 'Be helpful.' },
+    });
+
+    const published = await service.publish(tenantId, principal, agent.id);
+
+    expect(published.isActive).toBe(true);
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'agent.published' }),
+    );
+  });
+
+  it('unpublish reverts a published agent to draft', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, {
+      name: 'Agent',
+      config: { systemPrompt: 'Be helpful.' },
+      publishOnCreate: true,
+    });
+
+    const unpublished = await service.unpublish(tenantId, principal, agent.id);
+
+    expect(unpublished.isActive).toBe(false);
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'agent.unpublished' }),
+    );
+  });
+
+  it('clone creates an independent draft copy, even from a published source', async () => {
+    const principal = buildPrincipal();
+    const source = await service.create(tenantId, principal, {
+      name: 'Original',
+      config: { systemPrompt: 'Be helpful.' },
+      publishOnCreate: true,
+    });
+
+    const clone = await service.clone(tenantId, principal, source.id);
+
+    expect(clone.id).not.toBe(source.id);
+    expect(clone.name).toBe('Original (Copy)');
+    expect(clone.isActive).toBe(false); // never inherits the source's published state
+    expect(clone.currentVersion).toBe(1); // fresh version history, not inherited
+    expect(clone.config).toEqual(source.config);
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'agent.cloned', resourceId: clone.id }),
+    );
+  });
+
+  it('test sends the message through LlmOrchestratorClient and records an audit event', async () => {
+    const principal = buildPrincipal();
+    const agent = await service.create(tenantId, principal, { name: 'Agent' });
+    llmOrchestratorClient.testTurn.mockResolvedValue({ response: 'Hello there!', shouldEndCall: false });
+
+    const result = await service.test(tenantId, principal, agent.id, { message: 'Hi' });
+
+    expect(llmOrchestratorClient.testTurn).toHaveBeenCalledWith(agent.id, 'Hi');
+    expect(result.response).toBe('Hello there!');
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'agent.tested' }),
+    );
+  });
+
+  it('test 404s before calling the orchestrator if the agent does not exist', async () => {
+    const principal = buildPrincipal();
+    await expect(service.test(tenantId, principal, 'no-such-agent', { message: 'Hi' })).rejects.toThrow(
+      NotFoundError,
+    );
+    expect(llmOrchestratorClient.testTurn).not.toHaveBeenCalled();
+  });
+
+  it('getFeatureFlags returns the configured flags with real FeatureFlagService values', async () => {
+    featureFlagService.isEnabled.mockImplementation(async (key: string) => key === 'advanced_interrupt_handling');
+
+    const flags = await service.getFeatureFlags(tenantId);
+
+    expect(flags).toEqual([
+      { key: 'advanced_interrupt_handling', label: 'Advanced interrupt handling', enabled: true },
+      { key: 'custom_voice_cloning', label: 'Custom voice cloning', enabled: false },
+    ]);
+  });
+
+  it('getToolsCatalog delegates to ToolCatalogClient', async () => {
+    toolCatalogClient.listTools.mockResolvedValue([{ name: 'get_current_datetime', description: 'd' }]);
+
+    const catalog = await service.getToolsCatalog();
+
+    expect(catalog).toEqual([{ name: 'get_current_datetime', description: 'd' }]);
   });
 });
