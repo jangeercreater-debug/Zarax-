@@ -12,12 +12,14 @@ export interface UserRecord {
 export class UserRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  /** findFirst (not findUnique) so the soft-delete filter can combine with the
+   * unique-email lookup. */
   async findByEmail(email: string): Promise<UserRecord | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+    return this.prisma.user.findFirst({ where: { email, deletedAt: null } });
   }
 
   async findByIdOrThrow(id: string): Promise<UserRecord> {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!user) throw new NotFoundError('User', id);
     return user;
   }
@@ -49,6 +51,16 @@ export class UserRepository {
   }): Promise<void> {
     await this.prisma.tenantMembership.create({
       data: { userId: params.userId, tenantId: params.tenantId, role: params.role },
+    });
+  }
+
+  /** Soft delete — see docs/data-retention-policy.md. Also deactivates the account
+   * (isActive: false) so a concurrent login attempt fails even if a caller queries
+   * without the deletedAt filter for some reason. */
+  async softDelete(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { deletedAt: new Date(), isActive: false },
     });
   }
 }

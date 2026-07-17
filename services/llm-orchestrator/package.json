@@ -21,6 +21,7 @@
     "@zarax/ai-sdk": "workspace:*",
     "@zarax/database": "workspace:*",
     "@zarax/event-bus": "workspace:*",
+    "@zarax/metering": "workspace:*",
     "@zarax/redis-client": "workspace:*",
     "@zarax/resilience": "workspace:*",
     "@zarax/shared-auth": "workspace:*",

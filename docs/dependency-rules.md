@@ -15,7 +15,7 @@ Layer 0  shared-types            (zero internal deps — pure types/enums/contra
 Layer 1  shared-config, shared-logger, shared-errors     (depend only on Layer 0)
 Layer 2  shared-auth, shared-observability, event-bus, resilience     (depend only on Layers 0-1)
 Layer 3  database, redis-client, qdrant-client, ai-sdk    (depend only on Layers 0-2)
-Layer 4  audit-log, feature-flags, api-standards           (depend only on Layers 0-3, incl. database/redis-client)
+Layer 4  audit-log, feature-flags, api-standards, job-queue, metering  (depend only on Layers 0-3, incl. database/redis-client)
 Layer 4  sdk, ui                                          (depend only on Layer 0, +Layer 2 sparingly for ui)
 ```
 

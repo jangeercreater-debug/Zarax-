@@ -28,8 +28,28 @@ AuthModule.forRoot({
 })
 ```
 
+## Soft delete
+
+`Tenant`, `User`, and `Agent` carry a `deletedAt` column. Every repository read method
+for these filters `deletedAt: null` by default (using `findFirst`, not `findUnique`,
+since `findUnique` can't combine a unique-field lookup with an extra filter) — there is
+no "include deleted" flag; a soft-deleted row simply doesn't come back from a normal
+read. See `docs/data-retention-policy.md` for the retention/purge strategy this sets up.
+
+## Agent versioning & rollback
+
+`AgentRepository.createVersion()` snapshots `Agent.config` into an immutable
+`AgentVersion` row and atomically updates the Agent's live config in one transaction.
+`rollbackToVersion()` doesn't rewrite history — it creates a *new* version whose config
+matches an old one, so `listVersions()` always reads as an honest, append-only audit
+trail. This also covers prompt version history, since the system prompt lives inside
+`config` — see `docs/production-standards.md` items #19/#20.
+
 ## Commands
 
 - `pnpm db:migrate` (root) — `prisma migrate dev`
 - `pnpm db:studio` (root) — visual DB browser
 - `pnpm db:generate` (root) — regenerate the Prisma client after a schema change
+
+See also: `docs/database-migrations.md` (migration/rollback strategy),
+`docs/disaster-recovery.md` (backup/DR runbook).

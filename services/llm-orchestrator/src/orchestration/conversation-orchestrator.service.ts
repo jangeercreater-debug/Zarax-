@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AI_PROVIDER_REGISTRY, type AiProviderRegistry, type ChatMessage } from '@zarax/ai-sdk';
 import { AgentRepository, PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
+import { MeteringService } from '@zarax/metering';
 import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 import type { TenantId } from '@zarax/shared-types';
 
@@ -21,6 +22,7 @@ const FALLBACK_RESPONSE_TEXT =
 @Injectable()
 export class ConversationOrchestratorService {
   private readonly agentRepository: AgentRepository;
+  private readonly meteringService: MeteringService;
 
   constructor(
     private readonly conversationState: ConversationStateService,
@@ -32,6 +34,7 @@ export class ConversationOrchestratorService {
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
     this.agentRepository = new AgentRepository(prisma);
+    this.meteringService = new MeteringService(prisma);
   }
 
   async handleTurn(
@@ -136,6 +139,23 @@ export class ConversationOrchestratorService {
             messages: history,
             tools: params.tools,
           });
+
+      // Cost/usage tracking — see docs/production-standards.md item #4/#5. Recording
+      // must never fail the conversation turn over a metering hiccup.
+      this.meteringService
+        .recordLlmUsage({
+          tenantId: params.tenantId,
+          provider: params.provider,
+          model: params.model,
+          inputTokens: completion.usage.inputTokens,
+          outputTokens: completion.usage.outputTokens,
+          callId: params.callId,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn('Failed to record LLM usage/cost metering', {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
 
       if (completion.toolCalls.length === 0) {
         finalText = completion.content;

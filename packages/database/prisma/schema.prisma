@@ -20,6 +20,10 @@ model Tenant {
   status    TenantStatus @default(PENDING_SETUP)
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
+  /** Soft delete — see docs/data-retention-policy.md. Never physically removed by
+   * application code; a scheduled purge job (future work) hard-deletes rows past the
+   * retention window. */
+  deletedAt DateTime?    @map("deleted_at")
 
   memberships     TenantMembership[]
   apiKeys         ApiKey[]
@@ -56,6 +60,7 @@ model User {
   isActive     Boolean  @default(true) @map("is_active")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
   memberships TenantMembership[]
 
@@ -133,14 +138,44 @@ model Agent {
   name      String
   isActive  Boolean  @default(true) @map("is_active")
   config    Json     @default("{}")
+  /** Incremented on every AgentRepository.createVersion() call — the "current"
+   * version number, mirrored into the latest AgentVersion row. */
+  currentVersion Int @default(1) @map("current_version")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  calls  Call[]
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  calls    Call[]
+  versions AgentVersion[]
 
   @@index([tenantId])
   @@map("agents")
+}
+
+// ---------------------------------------------------------------------------
+// AgentVersion — an immutable snapshot of Agent.config at a point in time.
+// Covers both "agent versioning" and "prompt version history" (the system
+// prompt lives inside config, per docs/production-standards.md) — a config
+// shape with a separately-versioned prompt library is a natural future
+// evolution if prompts become shared across agents, not needed today.
+// ---------------------------------------------------------------------------
+model AgentVersion {
+  id        String   @id @default(uuid())
+  agentId   String   @map("agent_id")
+  tenantId  String   @map("tenant_id")
+  version   Int
+  config    Json
+  /** userId of whoever triggered this version, or null for system-generated
+   * (e.g. a rollback triggered by an automated process). */
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, version])
+  @@index([tenantId])
+  @@map("agent_versions")
 }
 
 model Call {
@@ -219,4 +254,49 @@ model FeatureFlagOverride {
   @@unique([tenantId, flagKey])
   @@index([tenantId])
   @@map("feature_flag_overrides")
+}
+
+// ---------------------------------------------------------------------------
+// Usage events — one row per billable unit of provider consumption (an LLM
+// completion's tokens, an STT/TTS call's audio seconds, a RAG embedding call).
+// Serves both cost tracking (costUsd) and usage metering (quantity/unit) from
+// the same underlying telemetry — see @zarax/metering and
+// docs/production-standards.md.
+// ---------------------------------------------------------------------------
+model UsageEvent {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  category   String // 'llm' | 'stt' | 'tts' | 'rag_embedding'
+  provider   String // 'anthropic' | 'groq' | 'openai' | 'gemini' | 'deepgram' | 'cartesia'
+  callId     String?  @map("call_id")
+  quantity   Float // meaning depends on `unit`
+  unit       String // 'tokens' | 'seconds' | 'characters' | 'calls'
+  costUsd    Float    @default(0) @map("cost_usd")
+  metadata   Json     @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, category])
+  @@map("usage_events")
+}
+
+// ---------------------------------------------------------------------------
+// Webhook deliveries — every attempt to deliver an outbound webhook (tenant
+// notification hooks, future event-subscription webhooks) is tracked here so
+// a permanently-failing endpoint is visible (dead_letter) rather than silently
+// dropped. See @zarax/job-queue's WebhookDeliveryService.
+// ---------------------------------------------------------------------------
+model WebhookDelivery {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  url         String
+  payload     Json
+  status      String    @default("pending") // 'pending' | 'delivered' | 'failed' | 'dead_letter'
+  attempts    Int       @default(0)
+  lastError   String?   @map("last_error")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deliveredAt DateTime? @map("delivered_at")
+
+  @@index([tenantId, status])
+  @@map("webhook_deliveries")
 }
