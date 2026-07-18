@@ -184,3 +184,30 @@ export interface ApiErrorBody {
     details?: Record<string, unknown>;
   };
 }
+
+export interface PhoneNumber {
+  id: string;
+  phoneNumber: string;
+  agentId: string | null;
+  sipTrunkId: string | null;
+  friendlyName: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CallRecord {
+  id: string;
+  agentId: string;
+  channel: string;
+  direction: 'inbound' | 'outbound';
+  fromNumber: string | null;
+  toNumber: string | null;
+  roomName: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  endReason: string | null;
+  durationMs: number | null;
+  llmProvider: string | null;
+  turnCount: number;
+}

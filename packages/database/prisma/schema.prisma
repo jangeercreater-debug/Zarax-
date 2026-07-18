@@ -194,25 +194,59 @@ model AgentVersion {
 }
 
 model Call {
-  id          String    @id @default(uuid())
-  tenantId    String    @map("tenant_id")
-  agentId     String    @map("agent_id")
-  channel     CallChannel
-  startedAt   DateTime  @map("started_at")
-  endedAt     DateTime? @map("ended_at")
-  endReason   String?   @map("end_reason")
-  durationMs  Int?      @map("duration_ms")
+  id               String    @id @default(uuid())
+  tenantId         String    @map("tenant_id")
+  agentId          String    @map("agent_id")
+  channel          CallChannel
+  direction        String    @default("inbound") // 'inbound' | 'outbound'
+  fromNumber       String?   @map("from_number")
+  toNumber         String?   @map("to_number")
+  roomName         String?   @map("room_name")
+  sipCallId        String?   @map("sip_call_id") // LiveKit SIP participant identity
+  recordingUrl     String?   @map("recording_url")
+  startedAt        DateTime  @map("started_at")
+  endedAt          DateTime? @map("ended_at")
+  endReason        String?   @map("end_reason")
+  durationMs       Int?      @map("duration_ms")
+  llmProvider      String?   @map("llm_provider") // 'anthropic' | 'openai' (whichever served the call)
+  turnCount        Int       @default(0) @map("turn_count")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   agent  Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([agentId])
+  @@index([tenantId, startedAt])
   @@map("calls")
+}
+
+// ---------------------------------------------------------------------------
+// Phone numbers — tenant-owned DID numbers provisioned via LiveKit SIP trunk.
+// Linking a phone number to an agent makes all inbound calls to that number
+// route to the linked agent automatically (via LiveKit SIP dispatch rules set up
+// in the LiveKit dashboard — the DB record drives the dashboard config UI).
+// ---------------------------------------------------------------------------
+model PhoneNumber {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  phoneNumber String    @map("phone_number") // E.164 format e.g. +14155552671
+  agentId     String?   @map("agent_id") // nullable — unassigned means the number isn't yet active
+  sipTrunkId  String?   @map("sip_trunk_id") // LiveKit SIP trunk ID for outbound calls
+  friendlyName String?  @map("friendly_name")
+  status      String    @default("active") // 'active' | 'inactive'
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, phoneNumber])
+  @@index([tenantId])
+  @@map("phone_numbers")
 }
 
 enum CallChannel {
   VOICE
+  PHONE // inbound/outbound SIP telephony via LiveKit SIP
   WEB_WIDGET
 }
 

@@ -58,6 +58,7 @@ export class ConversationOrchestratorService {
 
     const provider = runtimeConfig.provider ?? AGENT_RUNTIME_CONFIG_DEFAULTS.provider;
     const model = runtimeConfig.model ?? AGENT_RUNTIME_CONFIG_DEFAULTS.model;
+    const fallbackProviders = runtimeConfig.fallbackProviders ?? AGENT_RUNTIME_CONFIG_DEFAULTS.fallbackProviders;
     const maxIterations = runtimeConfig.maxToolIterations ?? AGENT_RUNTIME_CONFIG_DEFAULTS.maxToolIterations;
 
     let history = await this.conversationState.getHistory(tenantId, callId);
@@ -84,7 +85,7 @@ export class ConversationOrchestratorService {
       agentId,
       provider,
       model,
-      fallbackProviders: runtimeConfig.fallbackProviders,
+      fallbackProviders: fallbackProviders,
       temperature: runtimeConfig.temperature,
       maxTokens: runtimeConfig.maxTokens,
       maxIterations,

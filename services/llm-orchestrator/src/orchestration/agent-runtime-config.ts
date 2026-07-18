@@ -43,10 +43,11 @@ export interface AgentRuntimeConfig {
 }
 
 export const AGENT_RUNTIME_CONFIG_DEFAULTS: Required<
-  Pick<AgentRuntimeConfig, 'provider' | 'model' | 'ragEnabled' | 'maxToolIterations'>
+  Pick<AgentRuntimeConfig, 'provider' | 'fallbackProviders' | 'model' | 'ragEnabled' | 'maxToolIterations'>
 > = {
   provider: 'anthropic',
-  model: 'claude-sonnet-4-5',
+  fallbackProviders: ['openai'], // automatic failover if Claude is unavailable
+  model: 'claude-sonnet-4-6',
   ragEnabled: false,
   maxToolIterations: 5,
 };

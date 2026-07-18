@@ -5,10 +5,15 @@ import { PERMISSIONS, type Principal } from '@zarax/shared-types';
 import { CreateRoomDto } from './dto/create-room.dto';
 import type { RoomTokenResponseDto } from './dto/room-token-response.dto';
 import { RoomsService } from './rooms.service';
+import { DialOutboundDto } from '../calls/dto/dial-outbound.dto';
+import { OutboundCallService, type OutboundCallResult } from '../calls/outbound-call.service';
 
 @Controller('rooms')
 export class RoomsController {
-  constructor(private readonly roomsService: RoomsService) {}
+  constructor(
+    private readonly roomsService: RoomsService,
+    private readonly outboundCallService: OutboundCallService,
+  ) {}
 
   @RequirePermission(PERMISSIONS.CALLS_CREATE)
   @Post('token')
@@ -17,5 +22,14 @@ export class RoomsController {
     @Body() dto: CreateRoomDto,
   ): Promise<RoomTokenResponseDto> {
     return this.roomsService.createRoomAndToken(principal.tenantId, dto);
+  }
+
+  @RequirePermission(PERMISSIONS.CALLS_CREATE)
+  @Post('outbound')
+  async dialOutbound(
+    @CurrentPrincipal() principal: Principal,
+    @Body() dto: DialOutboundDto,
+  ): Promise<OutboundCallResult> {
+    return this.outboundCallService.dial(principal.tenantId, dto);
   }
 }
