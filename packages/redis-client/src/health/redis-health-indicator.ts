@@ -1,7 +1,10 @@
-import type { HealthIndicatorService } from '@nestjs/terminus';
 import type { Redis } from 'ioredis';
 
-export function createRedisHealthIndicator(redis: Redis, healthIndicatorService: HealthIndicatorService) {
+interface HealthIndicatorServiceLike {
+  check(key: string): { up(): unknown; down(opts: Record<string, unknown>): unknown };
+}
+
+export function createRedisHealthIndicator(redis: Redis, healthIndicatorService: HealthIndicatorServiceLike) {
   return async () => {
     const indicator = healthIndicatorService.check('redis');
     try {
