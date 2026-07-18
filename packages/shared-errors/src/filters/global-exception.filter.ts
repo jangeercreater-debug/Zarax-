@@ -65,7 +65,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             code: exception.code,
             message: exception.message,
             requestId,
-            details: exception.details,
+            ...(exception.details !== undefined ? { details: exception.details } : {}),
           },
         },
       };

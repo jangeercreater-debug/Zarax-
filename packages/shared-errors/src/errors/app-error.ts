@@ -20,7 +20,7 @@ export class AppError extends Error {
     this.name = new.target.name;
     this.code = code;
     this.httpStatus = ERROR_CODE_HTTP_STATUS[code];
-    this.details = details;
+    if (details !== undefined) this.details = details;
     Error.captureStackTrace?.(this, new.target);
   }
 }

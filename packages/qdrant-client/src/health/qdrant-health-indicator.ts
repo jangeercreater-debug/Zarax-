@@ -1,9 +1,12 @@
 import type { QdrantClient } from '@qdrant/js-client-rest';
-import type { HealthIndicatorService } from '@nestjs/terminus';
+
+interface HealthIndicatorServiceLike {
+  check(key: string): { up(): unknown; down(opts: Record<string, unknown>): unknown };
+}
 
 export function createQdrantHealthIndicator(
   client: QdrantClient,
-  healthIndicatorService: HealthIndicatorService,
+  healthIndicatorService: HealthIndicatorServiceLike,
 ) {
   return async () => {
     const indicator = healthIndicatorService.check('qdrant');

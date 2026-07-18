@@ -1,10 +1,12 @@
-import type { HealthIndicatorService } from '@nestjs/terminus';
-
 import type { ProviderHealthMonitor } from './provider-health-monitor';
+
+interface HealthIndicatorServiceLike {
+  check(key: string): { up(opts?: Record<string, unknown>): unknown; down(opts: Record<string, unknown>): unknown };
+}
 
 export function createProviderHealthIndicator(
   monitor: ProviderHealthMonitor,
-  healthIndicatorService: HealthIndicatorService,
+  healthIndicatorService: HealthIndicatorServiceLike,
 ) {
   return async () => {
     const indicator = healthIndicatorService.check(monitor.getProviderName());
