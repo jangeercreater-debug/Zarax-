@@ -19,7 +19,7 @@ export type GroqProviderOptions = Omit<OpenAiProviderOptions, 'baseURL' | 'vendo
  * it's passed through `options` instead of relying on field-override timing.
  */
 export class GroqProvider extends OpenAiProvider {
-  public readonly name: LLMProviderName = 'groq';
+  public override readonly name: LLMProviderName = 'groq';
 
   constructor(options: GroqProviderOptions) {
     super({ ...options, baseURL: GROQ_BASE_URL, vendorLabel: 'Groq' });

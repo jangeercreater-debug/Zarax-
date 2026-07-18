@@ -80,7 +80,7 @@ export class GeminiProvider implements LLMProvider {
               functionDeclarations: request.tools.map((tool) => ({
                 name: tool.name,
                 description: tool.description,
-                parameters: tool.parameters,
+                parameters: tool.parameters as never,
               })),
             },
           ]
