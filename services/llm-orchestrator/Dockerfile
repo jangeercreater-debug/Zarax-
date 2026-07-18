@@ -14,6 +14,7 @@ COPY --from=pruner /app/out/json/ .
 RUN pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
+COPY tsconfig.base.json tsconfig.base.json
 RUN pnpm turbo run build --filter=@zarax/llm-orchestrator...
 
 FROM base AS runner
