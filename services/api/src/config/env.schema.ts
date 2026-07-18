@@ -33,6 +33,9 @@ export const apiEnvSchema = baseEnvSchema
       // Must match tool-executor's own INTERNAL_SERVICE_TOKEN value — the same shared
       // secret InternalTokenGuard checks for stt-service/tts-service/tool-executor.
       TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN: z.string().min(32),
+      // voice-runtime uses this to fetch agent config internally (not via JWT/API key).
+      // Must match VOICE_RUNTIME_INTERNAL_SERVICE_TOKEN in services/voice-runtime's env.
+      INTERNAL_SERVICE_TOKEN: z.string().min(32),
     }),
   );
 

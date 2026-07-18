@@ -3,6 +3,7 @@ import type { EventEnvelope } from './event-envelope.types';
 export interface CallStartedPayload {
   callId: string;
   agentId: string;
+  roomName: string;
   channel: 'voice' | 'web_widget';
   startedAt: string;
 }

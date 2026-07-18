@@ -63,6 +63,7 @@ export class CallSessionService {
       payload: {
         callId: metadata.callId,
         agentId: metadata.agentId,
+        roomName,
         channel: metadata.channel,
         startedAt,
       },

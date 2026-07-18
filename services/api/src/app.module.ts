@@ -23,6 +23,7 @@ import { UsersAuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
+import { InternalModule } from './modules/internal/internal.module';
 
 /**
  * NestJS evaluates every dynamic module's .forRoot() call when this file is loaded —
@@ -78,6 +79,7 @@ const healthIndicatorService = new HealthIndicatorService();
     AgentsModule,
     UsersModule,
     WorkflowsModule,
+    InternalModule,
   ],
 })
 export class AppModule {}
