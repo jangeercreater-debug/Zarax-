@@ -2,7 +2,6 @@ import {
   baseEnvSchema,
   eventBusEnvSchema,
   jwtEnvSchema,
-  llmProvidersEnvSchema,
   observabilityEnvSchema,
   postgresEnvSchema,
   redisEnvSchema,
@@ -15,7 +14,6 @@ export const apiEnvSchema = baseEnvSchema
   .merge(jwtEnvSchema)
   .merge(eventBusEnvSchema)
   .merge(observabilityEnvSchema)
-  .merge(llmProvidersEnvSchema)
   .merge(
     z.object({
       // Used to build password-reset/email-verification links. Points at apps/web.

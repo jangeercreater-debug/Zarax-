@@ -39,7 +39,7 @@ export class LlmOrchestratorClient {
     });
   }
 
-  async sendTurn(agentId: string, message: string): Promise<AgentTurnResult> {
+  async sendTurn(tenantId: string, agentId: string, message: string): Promise<AgentTurnResult> {
     const baseUrl = this.config.get('LLM_ORCHESTRATOR_URL');
     const callId = `workflow-${randomUUID()}`;
 
@@ -50,7 +50,7 @@ export class LlmOrchestratorClient {
           'Content-Type': 'application/json',
           'X-Service-Account-Token': this.config.get('LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN'),
         },
-        body: JSON.stringify({ text: message, agentId }),
+        body: JSON.stringify({ text: message, agentId, tenantId }),
       });
 
       if (!response.ok) {

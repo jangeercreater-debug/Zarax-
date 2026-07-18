@@ -39,7 +39,7 @@ export class LlmOrchestratorClient {
    * llm-orchestrator's ConversationStateService naturally treats an unseen callId as
    * a brand-new conversation.
    */
-  async testTurn(agentId: string, message: string): Promise<TestTurnResult> {
+  async testTurn(tenantId: string, agentId: string, message: string): Promise<TestTurnResult> {
     const baseUrl = this.config.get('LLM_ORCHESTRATOR_URL');
     const testCallId = `test-${randomUUID()}`;
 
@@ -50,7 +50,7 @@ export class LlmOrchestratorClient {
           'Content-Type': 'application/json',
           'X-Service-Account-Token': this.config.get('LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN'),
         },
-        body: JSON.stringify({ text: message, agentId }),
+        body: JSON.stringify({ text: message, agentId, tenantId }),
       });
 
       if (!response.ok) {

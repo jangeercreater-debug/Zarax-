@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "license": "UNLICENSED",
-  "description": "Layer 3 — Prisma schema/client and tenant-scoped repository base class enforcing multi-tenant isolation at the query layer.",
+  "description": "Layer 3 \u2014 Prisma schema/client and tenant-scoped repository base class enforcing multi-tenant isolation at the query layer.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
@@ -17,7 +22,8 @@
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "studio": "prisma studio"
+    "studio": "prisma studio",
+    "seed:service-accounts": "tsx scripts/seed-service-accounts.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.4",
@@ -35,6 +41,7 @@
     "eslint": "^9.11.1",
     "prisma": "^5.20.0",
     "typescript": "^5.6.3",
-    "vitest": "^2.1.2"
+    "vitest": "^2.1.2",
+    "tsx": "^4.19.1"
   }
 }

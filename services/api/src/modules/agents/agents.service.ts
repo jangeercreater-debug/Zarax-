@@ -217,7 +217,7 @@ export class AgentsService {
   async test(tenantId: TenantId, principal: Principal, agentId: string, dto: TestAgentDto): Promise<TestTurnResult> {
     await this.agentRepository.findByIdForTenantOrThrow(tenantId, agentId); // confirms it exists in this tenant before spending an LLM call on it
 
-    const result = await this.llmOrchestratorClient.testTurn(agentId, dto.message);
+    const result = await this.llmOrchestratorClient.testTurn(tenantId, agentId, dto.message);
 
     await this.auditLogService.record({
       principal,

@@ -41,7 +41,7 @@ export class ToolCatalogClient {
     const baseUrl = this.config.get('TOOL_EXECUTOR_URL');
     try {
       const response = await this.httpClient.fetch(`${baseUrl}/tools`, {
-        headers: { 'X-Internal-Token': this.config.get('TOOL_EXECUTOR_INTERNAL_TOKEN') },
+        headers: { 'X-Internal-Token': this.config.get('TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN') },
       });
 
       if (!response.ok) {

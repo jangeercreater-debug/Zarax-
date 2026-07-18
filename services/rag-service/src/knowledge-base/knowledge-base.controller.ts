@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RateLimit } from '@zarax/api-standards';
-import { CurrentPrincipal, RequirePermission } from '@zarax/shared-auth';
+import { CurrentPrincipal, RequirePermission, resolveEffectiveTenantId } from '@zarax/shared-auth';
 import { PERMISSIONS, type Principal } from '@zarax/shared-types';
 
 import type {
@@ -124,13 +124,16 @@ export class KnowledgeBaseController {
    * No @RequirePermission beyond authentication — this endpoint is called both by
    * human-facing tenant traffic (via the gateway) and by llm-orchestrator acting as a
    * service_account Principal (see /docs/auth-design.md) during a live call, so it
-   * intentionally accepts any authenticated Principal type.
+   * intentionally accepts any authenticated Principal type. For a service_account
+   * caller, `dto.tenantId` is required and used instead of the service account's own
+   * bound tenant — see resolveEffectiveTenantId's doc comment for why.
    */
   @Post('search')
   async search(
     @CurrentPrincipal() principal: Principal,
     @Body() dto: SearchKnowledgeBaseDto,
   ): Promise<SearchKnowledgeBaseResponseDto> {
-    return this.knowledgeBaseService.search(principal.tenantId, dto.query, dto.limit);
+    const tenantId = resolveEffectiveTenantId(principal, dto.tenantId);
+    return this.knowledgeBaseService.search(tenantId, dto.query, dto.limit);
   }
 }

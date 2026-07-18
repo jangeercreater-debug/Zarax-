@@ -299,7 +299,7 @@ describe('AgentsService', () => {
 
     const result = await service.test(tenantId, principal, agent.id, { message: 'Hi' });
 
-    expect(llmOrchestratorClient.testTurn).toHaveBeenCalledWith(agent.id, 'Hi');
+    expect(llmOrchestratorClient.testTurn).toHaveBeenCalledWith(tenantId, agent.id, 'Hi');
     expect(result.response).toBe('Hello there!');
     expect(auditLogService.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'agent.tested' }),

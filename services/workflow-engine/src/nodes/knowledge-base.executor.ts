@@ -23,7 +23,7 @@ export class KnowledgeBaseExecutor implements NodeExecutor {
     const query = String(resolveTemplate(queryTemplate, context.context) ?? '');
     const limit = Number(node.data.limit ?? 5);
 
-    const result = await this.ragSearchClient.search(query, limit);
+    const result = await this.ragSearchClient.search(context.tenantId, query, limit);
     return { output: result };
   }
 }

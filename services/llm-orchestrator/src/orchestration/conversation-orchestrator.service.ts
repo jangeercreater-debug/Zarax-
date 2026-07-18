@@ -71,7 +71,7 @@ export class ConversationOrchestratorService {
     }
 
     if (runtimeConfig.ragEnabled ?? AGENT_RUNTIME_CONFIG_DEFAULTS.ragEnabled) {
-      history = await this.augmentWithRagContext(history, userText);
+      history = await this.augmentWithRagContext(tenantId, history, userText);
     }
 
     history = [...history, { role: 'user', content: userText }];
@@ -97,9 +97,13 @@ export class ConversationOrchestratorService {
     return { response: finalText, shouldEndCall, endCallReason };
   }
 
-  private async augmentWithRagContext(history: ChatMessage[], userText: string): Promise<ChatMessage[]> {
+  private async augmentWithRagContext(
+    tenantId: TenantId,
+    history: ChatMessage[],
+    userText: string,
+  ): Promise<ChatMessage[]> {
     try {
-      const results = await this.ragClient.search(userText);
+      const results = await this.ragClient.search(tenantId, userText);
       if (results.length === 0) return history;
 
       const context = results.map((r) => `- ${r.text}`).join('\n');

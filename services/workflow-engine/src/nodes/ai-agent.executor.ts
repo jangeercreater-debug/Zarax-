@@ -25,7 +25,7 @@ export class AiAgentExecutor implements NodeExecutor {
     }
 
     const message = String(resolveTemplate(messageTemplate, context.context) ?? '');
-    const result = await this.llmOrchestratorClient.sendTurn(agentId, message);
+    const result = await this.llmOrchestratorClient.sendTurn(context.tenantId, agentId, message);
 
     return { output: result };
   }

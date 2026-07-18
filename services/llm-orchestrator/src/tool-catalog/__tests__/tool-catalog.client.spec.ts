@@ -11,7 +11,7 @@ const noopLogger = { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn()
 function buildConfig(): AppConfigService<LlmOrchestratorEnv> {
   return new AppConfigService({
     TOOL_EXECUTOR_URL: 'https://tool-executor.internal',
-    TOOL_EXECUTOR_INTERNAL_TOKEN: 'internal-token',
+    TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN: 'internal-token',
   } as LlmOrchestratorEnv);
 }
 

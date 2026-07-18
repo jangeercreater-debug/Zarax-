@@ -61,3 +61,23 @@ Bearer <jwt>` vs `X-API-Key: <key>` vs mTLS), and every path converges on produc
   same mechanism, `type: 'service_account'`, scopes limit blast radius.
 - **RBAC changes** (new roles, finer permissions): only touches the permission-resolution
   step that builds `Principal.permissions` — guards and controllers are untouched.
+
+## Critical pattern: never trust a service account's own tenantId for the request it's making
+
+A `ServiceAccount` row is bound to one fixed tenant (`ServiceAccountRepository.validate()`
+returns that tenant on its Principal) — but a service account calling another service is
+almost always acting *on behalf of* a different, specific tenant (e.g. llm-orchestrator
+calling rag-service's `/search` for whichever tenant's live conversation is happening,
+not the tenant the service account happens to be registered under). Using
+`principal.tenantId` directly in an endpoint that accepts `service_account` callers is a
+real, severe cross-tenant bug — found and fixed during the M8 production audit in exactly
+two places: `rag-service`'s `/search` and `llm-orchestrator`'s `/conversations/:id/turns`.
+
+**The rule**: any endpoint documented as accepting `service_account` Principals must
+require the caller to pass the target `tenantId` explicitly in the request body, and
+resolve it via `@zarax/shared-auth`'s `resolveEffectiveTenantId(principal, dto.tenantId)`
+— which requires and trusts that explicit value only for a `service_account` caller,
+and ignores it entirely for a `user`/`api_key` caller (whose own authenticated
+`principal.tenantId` is always authoritative, so they can never widen their own access
+by sending a different tenantId). Every new internal service-to-service endpoint should
+use this helper from the start, not `principal.tenantId` directly.

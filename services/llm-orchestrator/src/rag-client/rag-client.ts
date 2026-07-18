@@ -33,7 +33,7 @@ export class RagClient {
     return this.httpClient;
   }
 
-  async search(query: string, limit = 5): Promise<RagSearchResult[]> {
+  async search(tenantId: string, query: string, limit = 5): Promise<RagSearchResult[]> {
     const baseUrl = this.config.get('RAG_SERVICE_URL');
     if (!baseUrl) return []; // RAG is an optional enhancement, not a hard dependency.
 
@@ -44,7 +44,7 @@ export class RagClient {
           'Content-Type': 'application/json',
           'X-Service-Account-Token': this.config.get('RAG_SERVICE_ACCOUNT_TOKEN'),
         },
-        body: JSON.stringify({ query, limit }),
+        body: JSON.stringify({ query, limit, tenantId }),
       });
 
       if (!response.ok) {

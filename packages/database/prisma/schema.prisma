@@ -2,9 +2,17 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Neon (and any PgBouncer-fronted Postgres) provides two connection strings: a
+// pooled one (safe for the app's runtime queries, many short-lived connections) and
+// a direct/unpooled one (required for `prisma migrate deploy` — DDL and PgBouncer's
+// transaction-pooling mode don't mix). `url` is what every service's Prisma client
+// connects with at runtime; `directUrl` is what `prisma migrate dev`/`deploy` use
+// instead. If you're not using a pooler, set DATABASE_URL_UNPOOLED to the same value
+// as DATABASE_URL — see docs/deployment.md.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ---------------------------------------------------------------------------

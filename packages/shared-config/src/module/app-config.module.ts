@@ -44,7 +44,7 @@ export class AppConfigModule {
   static forRoot<T extends Record<string, unknown>>(
     options: AppConfigModuleOptions<T>,
   ): DynamicModule {
-    const validatedConfig = validateEnv(options.schema);
+    const validatedConfig = validateEnv(options.schema) as Readonly<Record<string, unknown>>;
 
     return {
       module: AppConfigModule,

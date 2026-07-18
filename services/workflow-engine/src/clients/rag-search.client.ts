@@ -30,7 +30,7 @@ export class RagSearchClient {
     });
   }
 
-  async search(query: string, limit = 5): Promise<RagSearchResult> {
+  async search(tenantId: string, query: string, limit = 5): Promise<RagSearchResult> {
     const baseUrl = this.config.get('RAG_SERVICE_URL');
 
     try {
@@ -40,7 +40,7 @@ export class RagSearchClient {
           'Content-Type': 'application/json',
           'X-Service-Account-Token': this.config.get('RAG_SERVICE_ACCOUNT_TOKEN'),
         },
-        body: JSON.stringify({ query, limit }),
+        body: JSON.stringify({ query, limit, tenantId }),
       });
 
       if (!response.ok) {

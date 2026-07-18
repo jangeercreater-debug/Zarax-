@@ -12,3 +12,4 @@ export * from './module/auth.module';
 export * from './services/jwt-token.service';
 export * from './services/validator.interfaces';
 export * from './strategies/jwt.strategy';
+export * from './utils/resolve-effective-tenant';

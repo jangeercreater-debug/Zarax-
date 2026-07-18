@@ -30,7 +30,7 @@ describe('RagClient', () => {
 
   it('returns an empty array when RAG_SERVICE_URL is not configured, without calling fetch', async () => {
     const client = new RagClient(buildConfig({ RAG_SERVICE_URL: '' }), noopLogger);
-    const results = await client.search('refund policy');
+    const results = await client.search('tenant-1', 'refund policy');
 
     expect(results).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe('RagClient', () => {
     });
 
     const client = new RagClient(buildConfig(), noopLogger);
-    const results = await client.search('refund policy', 3);
+    const results = await client.search('tenant-1', 'refund policy', 3);
 
     expect(results).toEqual([{ text: 'Refunds take 5-7 days.', score: 0.9, metadata: {} }]);
 
@@ -51,12 +51,15 @@ describe('RagClient', () => {
     expect(url).toBe('https://rag.internal/search');
     const headers = init.headers as Headers;
     expect(headers.get('X-Service-Account-Token')).toBe('service-token');
+
+    const body = JSON.parse(init.body as string) as { tenantId: string };
+    expect(body.tenantId).toBe('tenant-1'); // required now that rag-service validates it for service_account callers
   });
 
   it('throws ExternalServiceError on a non-OK response', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500 });
 
     const client = new RagClient(buildConfig(), noopLogger);
-    await expect(client.search('x')).rejects.toThrow(ExternalServiceError);
+    await expect(client.search('tenant-1', 'x')).rejects.toThrow(ExternalServiceError);
   });
 });

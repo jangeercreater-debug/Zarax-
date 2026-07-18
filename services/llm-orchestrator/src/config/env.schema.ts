@@ -1,8 +1,8 @@
 import {
-  aiProvidersEnvSchema,
   baseEnvSchema,
   eventBusEnvSchema,
   jwtEnvSchema,
+  llmProvidersEnvSchema,
   observabilityEnvSchema,
   postgresEnvSchema,
   redisEnvSchema,
@@ -15,12 +15,12 @@ export const llmOrchestratorEnvSchema = baseEnvSchema
   .merge(eventBusEnvSchema)
   .merge(jwtEnvSchema)
   .merge(observabilityEnvSchema)
-  .merge(aiProvidersEnvSchema)
+  .merge(llmProvidersEnvSchema)
   .merge(
     z.object({
       DEFAULT_LLM_PROVIDER: z.enum(['anthropic', 'groq', 'openai', 'gemini']).default('anthropic'),
       TOOL_EXECUTOR_URL: z.string().url(),
-      TOOL_EXECUTOR_INTERNAL_TOKEN: z.string().min(32),
+      TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN: z.string().min(32),
       // RAG is optional — an empty string disables it (see RagClient.search).
       RAG_SERVICE_URL: z.string().optional().default(''),
       RAG_SERVICE_ACCOUNT_TOKEN: z.string().optional().default(''),

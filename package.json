@@ -25,7 +25,8 @@
     "changeset": "changeset",
     "db:generate": "pnpm --filter @zarax/database generate",
     "db:migrate": "pnpm --filter @zarax/database migrate:dev",
-    "db:studio": "pnpm --filter @zarax/database studio"
+    "db:studio": "pnpm --filter @zarax/database studio",
+    "db:seed-service-accounts": "pnpm --filter @zarax/database seed:service-accounts --"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.9",
