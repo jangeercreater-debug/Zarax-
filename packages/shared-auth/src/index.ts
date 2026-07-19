@@ -1,4 +1,3 @@
-import './types/express';
 
 export * from './decorators/current-principal.decorator';
 export * from './decorators/public.decorator';
