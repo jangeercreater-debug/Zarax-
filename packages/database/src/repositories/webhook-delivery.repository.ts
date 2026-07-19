@@ -19,7 +19,7 @@ export class WebhookDeliveryRepository {
     payload: Record<string, unknown>;
   }): Promise<WebhookDeliveryRecord> {
     const record = await this.prisma.webhookDelivery.create({
-      data: { tenantId: params.tenantId, url: params.url, payload: params.payload },
+      data: { tenantId: params.tenantId, url: params.url, payload: params.payload as never },
     });
     return record as unknown as WebhookDeliveryRecord;
   }

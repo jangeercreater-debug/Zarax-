@@ -82,7 +82,7 @@ export class WorkflowRepository extends TenantScopedRepository<
           tenantId: params.tenantId,
           name: params.name,
           description: params.description,
-          definition: params.definition,
+          definition: params.definition as never,
           currentVersion: 1,
           isActive: params.isActive ?? false,
         },
@@ -93,7 +93,7 @@ export class WorkflowRepository extends TenantScopedRepository<
           workflowId: workflow.id,
           tenantId: params.tenantId,
           version: 1,
-          definition: params.definition,
+          definition: params.definition as never,
           createdBy: params.createdBy,
         },
       });
@@ -142,14 +142,14 @@ export class WorkflowRepository extends TenantScopedRepository<
           workflowId: params.workflowId,
           tenantId: params.tenantId,
           version: nextVersion,
-          definition: params.definition,
+          definition: params.definition as never,
           createdBy: params.createdBy,
         },
       });
 
       await tx.workflow.update({
         where: { id: params.workflowId },
-        data: { definition: params.definition, currentVersion: nextVersion },
+        data: { definition: params.definition as never, currentVersion: nextVersion },
       });
 
       return {

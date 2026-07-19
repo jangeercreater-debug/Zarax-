@@ -34,7 +34,7 @@ export class UsageEventRepository {
         quantity: input.quantity,
         unit: input.unit,
         costUsd: input.costUsd,
-        metadata: input.metadata ?? {},
+        metadata: (input.metadata ?? {}) as never,
       },
     });
   }

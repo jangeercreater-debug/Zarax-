@@ -33,7 +33,7 @@ export class AuditLogRepository extends TenantScopedRepository<
         action: entry.action,
         resourceType: entry.resourceType,
         resourceId: entry.resourceId,
-        metadata: entry.metadata ?? {},
+        metadata: (entry.metadata ?? {}) as never,
         ipAddress: entry.ipAddress,
         correlationId: entry.correlationId,
       },

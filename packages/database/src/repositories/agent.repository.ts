@@ -91,7 +91,7 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
         data: {
           tenantId: params.tenantId,
           name: params.name,
-          config: params.config,
+          config: params.config as never,
           currentVersion: 1,
           isActive: params.isActive ?? false,
         },
@@ -102,7 +102,7 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
           agentId: agent.id,
           tenantId: params.tenantId,
           version: 1,
-          config: params.config,
+          config: params.config as never,
           createdBy: params.createdBy,
         },
       });
@@ -170,14 +170,14 @@ export class AgentRepository extends TenantScopedRepository<PrismaAgent, Prisma.
           agentId: params.agentId,
           tenantId: params.tenantId,
           version: nextVersion,
-          config: params.config,
+          config: params.config as never,
           createdBy: params.createdBy,
         },
       });
 
       await tx.agent.update({
         where: { id: params.agentId },
-        data: { config: params.config, currentVersion: nextVersion },
+        data: { config: params.config as never, currentVersion: nextVersion },
       });
 
       return {
