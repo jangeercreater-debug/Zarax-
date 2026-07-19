@@ -113,7 +113,7 @@ export class AuthService {
    * this milestone (no `sessionId` claim) is also rejected, forcing one re-login —
    * an acceptable one-time migration cost for gaining real revocability.
    */
-  async refresh(refreshToken: string, _context: RequestContext): Promise<AuthTokensDto> {
+  async refresh(refreshToken: string, __context: RequestContext): Promise<AuthTokensDto> {
     const payload = this.jwtTokenService.verifyRefreshToken(refreshToken);
     if (!payload.sessionId) {
       throw new UnauthenticatedError('Please sign in again.');
