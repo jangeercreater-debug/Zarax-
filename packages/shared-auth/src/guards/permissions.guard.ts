@@ -4,7 +4,6 @@ import { ForbiddenError, UnauthenticatedError } from '@zarax/shared-errors';
 import { PERMISSIONS, type Permission } from '@zarax/shared-types';
 import type { Request } from 'express';
 
-import '../types/express';
 import { REQUIRED_PERMISSIONS_KEY } from '../decorators/require-permission.decorator';
 
 /**

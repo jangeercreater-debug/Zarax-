@@ -6,7 +6,6 @@ import { setRequestPrincipal } from '@zarax/shared-logger';
 import type { Principal } from '@zarax/shared-types';
 import type { Request } from 'express';
 
-import '../types/express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import {
   API_KEY_VALIDATOR,

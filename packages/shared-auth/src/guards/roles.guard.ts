@@ -4,7 +4,6 @@ import { ForbiddenError, UnauthenticatedError } from '@zarax/shared-errors';
 import type { Role } from '@zarax/shared-types';
 import type { Request } from 'express';
 
-import '../types/express';
 import { REQUIRED_ROLES_KEY } from '../decorators/require-role.decorator';
 
 @Injectable()
