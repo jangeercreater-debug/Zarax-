@@ -47,7 +47,7 @@ export class JobQueue<TData, TResult = void> {
   }
 
   async add(jobName: string, data: TData, options: { delayMs?: number } = {}): Promise<void> {
-    await this.queue.add(jobName, data, {
+    await this.queue.add(jobName as never, data, {
       attempts: this.options.attempts ?? 5,
       backoff: { type: 'exponential', delay: this.options.backoffDelayMs ?? 2000 },
       removeOnComplete: { count: 1000 },

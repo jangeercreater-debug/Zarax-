@@ -54,7 +54,7 @@ describe('JobQueue', () => {
     const queue = new JobQueue({ name: 'test-queue', redisUrl: 'redis://localhost' });
     await queue.add('do-thing', { foo: 'bar' });
 
-    const callArgs = addMock.mock.calls[0];
+    const callArgs = addMock.mock.calls[0]!;
     expect(callArgs[2]).not.toHaveProperty('delay');
   });
 
