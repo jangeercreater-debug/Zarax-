@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HealthIndicatorService } from '@nestjs/terminus';
 import { ApiStandardsModule } from '@zarax/api-standards';
 import { AuditLogModule } from '@zarax/audit-log';
 import {
@@ -36,11 +35,16 @@ import { TelephonyModule } from './modules/telephony/telephony.module';
  */
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
-const healthIndicatorService = new HealthIndicatorService();
+const healthIndicatorService = {
+  check: (key: string) => ({
+    up: (details?: Record<string, unknown>) => ({ [key]: { status: 'up', ...details } } as Record<string, { status: string }>),
+    down: (details?: Record<string, unknown>) => ({ [key]: { status: 'down', ...details } } as Record<string, { status: string }>),
+  }),
+} as never;
 
 @Module({
   imports: [
-    AppConfigModule.forRoot({ schema: apiEnvSchema }),
+    AppConfigModule.forRoot({ schema: apiEnvSchema as never }),
     LoggerModule.forRoot({
       serviceName: 'api',
       level: process.env.LOG_LEVEL ?? 'info',
