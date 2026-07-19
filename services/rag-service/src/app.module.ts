@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HealthIndicatorService } from '@nestjs/terminus';
 import { ApiStandardsModule } from '@zarax/api-standards';
 import { AuditLogModule } from '@zarax/audit-log';
 import {
@@ -27,11 +26,11 @@ const qdrant = createQdrantClient({
   url: process.env.QDRANT_URL ?? '',
   apiKey: process.env.QDRANT_API_KEY,
 });
-const healthIndicatorService = new HealthIndicatorService();
+const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<string, unknown>) => ({ [key]: { status: 'up', ...d } }), down: (d?: Record<string, unknown>) => ({ [key]: { status: 'down', ...d } }) }) } as never;
 
 @Module({
   imports: [
-    AppConfigModule.forRoot({ schema: ragServiceEnvSchema }),
+    AppConfigModule.forRoot({ schema: ragServiceEnvSchema as never }),
     LoggerModule.forRoot({
       serviceName: 'rag-service',
       level: process.env.LOG_LEVEL ?? 'info',
@@ -39,9 +38,9 @@ const healthIndicatorService = new HealthIndicatorService();
     }),
     HealthModule.forRoot({
       indicators: [
-        createPrismaHealthIndicator(prisma, healthIndicatorService),
-        createRedisHealthIndicator(redis, healthIndicatorService),
-        createQdrantHealthIndicator(qdrant, healthIndicatorService),
+        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
+        createRedisHealthIndicator(redis, healthIndicatorService) as never,
+        createQdrantHealthIndicator(qdrant, healthIndicatorService) as never,
       ],
     }),
     MetricsModule.forRoot({ serviceName: 'rag-service' }),

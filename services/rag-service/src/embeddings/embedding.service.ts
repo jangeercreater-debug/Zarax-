@@ -54,7 +54,7 @@ export class EmbeddingService {
 
   async embedOne(text: string): Promise<number[]> {
     const [embedding] = await this.embedBatch([text]);
-    return embedding;
+    return embedding!;
   }
 
   /** text-embedding-3-small's native output dimensionality — used to size the Qdrant

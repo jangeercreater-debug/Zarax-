@@ -87,7 +87,7 @@ export class DocumentProcessingService implements OnModuleDestroy {
     const embeddings = await this.embeddingService.embedBatch(chunks);
     const points = chunks.map((chunk, index) => ({
       id: randomUUID(),
-      vector: embeddings[index],
+      vector: embeddings[index]!,
       payload: { text: chunk, documentId: doc.id, chunkIndex: index } satisfies ChunkPayload,
     }));
 

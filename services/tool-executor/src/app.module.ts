@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { HealthIndicatorService } from '@nestjs/terminus';
 import { createPrismaClient, createPrismaHealthIndicator, PrismaClientModule } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
 import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
@@ -14,11 +13,11 @@ import { ExecutionModule } from './execution/execution.module';
 // process.env here rather than via DI — the same reasoning applies to every service.
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
-const healthIndicatorService = new HealthIndicatorService();
+const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<string, unknown>) => ({ [key]: { status: 'up', ...d } }), down: (d?: Record<string, unknown>) => ({ [key]: { status: 'down', ...d } }) }) } as never;
 
 @Module({
   imports: [
-    AppConfigModule.forRoot({ schema: toolExecutorEnvSchema }),
+    AppConfigModule.forRoot({ schema: toolExecutorEnvSchema as never }),
     LoggerModule.forRoot({
       serviceName: 'tool-executor',
       level: process.env.LOG_LEVEL ?? 'info',
@@ -29,8 +28,8 @@ const healthIndicatorService = new HealthIndicatorService();
     }),
     HealthModule.forRoot({
       indicators: [
-        createPrismaHealthIndicator(prisma, healthIndicatorService),
-        createRedisHealthIndicator(redis, healthIndicatorService),
+        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
+        createRedisHealthIndicator(redis, healthIndicatorService) as never,
       ],
     }),
     MetricsModule.forRoot({ serviceName: 'tool-executor' }),
