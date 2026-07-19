@@ -101,7 +101,7 @@ describe('FeatureFlagService', () => {
   });
 
   it('setOverride invalidates the cache for that tenant+flag', async () => {
-    await cache.set(tenantId, 'feature-flag:my_flag', true, 30);
+    await cache.set(tenantId, 'feature-flag:my_flag', true);
     const service = new FeatureFlagService(prisma as never, cache as never);
 
     await service.setOverride(tenantId, 'my_flag', false);
