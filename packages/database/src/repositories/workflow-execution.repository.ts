@@ -51,7 +51,7 @@ function toRecord(execution: {
     input: execution.input as Record<string, unknown>,
     output: execution.output as Record<string, unknown> | null,
     errorMessage: execution.errorMessage,
-    nodeExecutions: execution.nodeExecutions as NodeExecutionLogEntry[],
+    nodeExecutions: (execution.nodeExecutions as unknown as NodeExecutionLogEntry[]) ?? [],
     startedAt: execution.startedAt.toISOString(),
     completedAt: execution.completedAt?.toISOString() ?? null,
   };
@@ -71,7 +71,7 @@ export class WorkflowExecutionRepository {
         tenantId: params.tenantId,
         workflowId: params.workflowId,
         triggerType: params.triggerType,
-        input: params.input,
+        input: params.input as never,
       },
     });
     return toRecord(execution);
@@ -82,11 +82,7 @@ export class WorkflowExecutionRepository {
     return execution ? toRecord(execution) : null;
   }
 
-  async listForWorkflow(
-    tenantId: TenantId,
-    workflowId: string,
-    limit = 50,
-  ): Promise<WorkflowExecutionRecord[]> {
+  async listForWorkflow(tenantId: TenantId, workflowId: string, limit = 50): Promise<WorkflowExecutionRecord[]> {
     const executions = await this.prisma.workflowExecution.findMany({
       where: { tenantId, workflowId },
       orderBy: { startedAt: 'desc' },
@@ -101,17 +97,17 @@ export class WorkflowExecutionRepository {
 
   async appendNodeExecution(id: string, entry: NodeExecutionLogEntry): Promise<void> {
     const current = await this.prisma.workflowExecution.findUniqueOrThrow({ where: { id } });
-    const log = (current.nodeExecutions as NodeExecutionLogEntry[]) ?? [];
+    const log = ((current.nodeExecutions as unknown as NodeExecutionLogEntry[]) ?? []);
     await this.prisma.workflowExecution.update({
       where: { id },
-      data: { nodeExecutions: [...log, entry] },
+      data: { nodeExecutions: [...log, entry] as never },
     });
   }
 
   async markCompleted(id: string, output: Record<string, unknown>): Promise<void> {
     await this.prisma.workflowExecution.update({
       where: { id },
-      data: { status: 'completed', output, completedAt: new Date() },
+      data: { status: 'completed', output: output as never, completedAt: new Date() },
     });
   }
 

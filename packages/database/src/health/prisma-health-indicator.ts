@@ -1,17 +1,10 @@
 import type { PrismaClient } from '@prisma/client';
-import { HealthIndicatorService } from '@nestjs/terminus';
 
-/**
- * Returns a function matching @nestjs/terminus's `HealthIndicatorFunction` shape.
- * shared-observability (Layer 2) can't own this itself since it must not depend on
- * this Layer 3 package — the consuming service imports both and wires them together:
- *
- *   HealthModule.forRoot({ indicators: [createPrismaHealthIndicator(prisma, healthIndicatorService)] })
- */
-export function createPrismaHealthIndicator(
-  prisma: PrismaClient,
-  healthIndicatorService: HealthIndicatorService,
-) {
+interface HealthIndicatorServiceLike {
+  check(key: string): { up(): unknown; down(opts: Record<string, unknown>): unknown };
+}
+
+export function createPrismaHealthIndicator(prisma: PrismaClient, healthIndicatorService: HealthIndicatorServiceLike) {
   return async () => {
     const indicator = healthIndicatorService.check('database');
     try {
