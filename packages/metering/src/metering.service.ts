@@ -6,7 +6,7 @@ import {
   calculateLlmCostUsd,
   calculateSttCostUsd,
   calculateTtsCostUsd,
-} from '../pricing/pricing-table';
+} from './pricing/pricing-table';
 
 export class MeteringService {
   private readonly repository: UsageEventRepository;
