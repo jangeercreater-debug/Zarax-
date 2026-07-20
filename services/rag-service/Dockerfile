@@ -26,3 +26,4 @@ ENV NODE_ENV=production
 EXPOSE 3005
 
 CMD ["node", "services/rag-service/dist/main.js"]
+# cache bust 1784551564
