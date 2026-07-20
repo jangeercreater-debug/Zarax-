@@ -9,16 +9,17 @@ export const METRICS_REGISTRY = Symbol('METRICS_REGISTRY');
 
 interface MetricsModuleOptions {
   serviceName: string;
-  /** Set false to expose /metrics without the global request-timing interceptor
-   * (rarely needed — e.g. a service that already instruments manually). */
   enableHttpInterceptor?: boolean;
 }
 
 @Module({})
 export class MetricsModule {
   static forRoot(options: MetricsModuleOptions): DynamicModule {
+    const registry = new MetricsRegistry(options.serviceName);
+
     const providers: Provider[] = [
-      { provide: METRICS_REGISTRY, useValue: new MetricsRegistry(options.serviceName) },
+      { provide: METRICS_REGISTRY, useValue: registry },
+      { provide: MetricsRegistry, useValue: registry },
     ];
 
     if (options.enableHttpInterceptor ?? true) {
@@ -30,8 +31,7 @@ export class MetricsModule {
       global: true,
       controllers: [MetricsController],
       providers,
-      exports: [METRICS_REGISTRY],
+      exports: [METRICS_REGISTRY, MetricsRegistry],
     };
   }
 }
-// rebuild
