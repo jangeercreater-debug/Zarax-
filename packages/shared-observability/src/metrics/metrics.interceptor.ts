@@ -23,13 +23,14 @@ export class MetricsInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap(() => {
-        const duration = Date.now() - start;
-        this.metrics.recordHttpRequest(
-          request.method,
-          request.route?.path ?? request.path,
-          response.statusCode,
-          duration,
-        );
+        const duration = (Date.now() - start) / 1000;
+        const labels = {
+          method: request.method,
+          route: request.route?.path ?? request.path,
+          status_code: String(response.statusCode),
+        };
+        this.metrics.httpRequestsTotal.inc(labels);
+        this.metrics.httpRequestDurationSeconds.observe(labels, duration);
       }),
     );
   }
