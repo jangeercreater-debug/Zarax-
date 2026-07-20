@@ -56,8 +56,8 @@ const healthIndicatorService = {
     }),
     HealthModule.forRoot({
       indicators: [
-        createPrismaHealthIndicator(prisma, healthIndicatorService),
-        createRedisHealthIndicator(redis, healthIndicatorService),
+        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
+        createRedisHealthIndicator(redis, healthIndicatorService) as never,
       ],
     }),
     MetricsModule.forRoot({ serviceName: 'api' }),
