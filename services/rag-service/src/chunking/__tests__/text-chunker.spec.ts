@@ -42,6 +42,6 @@ describe('chunkText', () => {
     expect(chunks.length).toBeGreaterThan(1);
     // The second chunk should contain a tail fragment from the first chunk's end.
     const firstChunkTail = chunks[0]!.slice(-10);
-    expect(chunks[1]).toEqual(expect.stringContaining((firstChunkTail as string).split(' ').slice(-1)[0]));
+    expect(chunks[1]).toEqual(expect.stringContaining((firstChunkTail as string).split(' ').slice(-1)[0]!));
   });
 });
