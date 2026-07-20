@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { INTERNAL_SERVICE_TOKEN } from '@zarax/shared-auth';
-
 import { InternalAgentController } from './internal-agent.controller';
 
 @Module({
