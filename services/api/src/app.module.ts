@@ -4,14 +4,13 @@ import { AuditLogModule } from '@zarax/audit-log';
 import {
   ApiKeyRepository,
   createPrismaClient,
-  createPrismaHealthIndicator,
   PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
 import { RedisCacheModule } from '@zarax/redis-client';
 import { FeatureFlagsModule } from '@zarax/feature-flags';
-import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
+import { createRedisClient } from '@zarax/redis-client';
 import { AuthModule, API_KEY_VALIDATOR, SERVICE_ACCOUNT_VALIDATOR } from '@zarax/shared-auth';
 import { AppConfigModule } from '@zarax/shared-config';
 import { LoggerModule } from '@zarax/shared-logger';
@@ -35,7 +34,6 @@ import { TelephonyModule } from './modules/telephony/telephony.module';
  * only for the handful of things that must exist before that runs.)
  */
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
-const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
 const healthIndicatorService = {
   check: (key: string) => ({
     up: (details?: Record<string, unknown>) => ({ [key]: { status: 'up', ...details } } as Record<string, { status: string }>),
