@@ -9,6 +9,7 @@ import {
   ServiceAccountRepository,
 } from '@zarax/database';
 import { EventBusModule } from '@zarax/event-bus';
+import { RedisCacheModule } from '@zarax/redis-client';
 import { FeatureFlagsModule } from '@zarax/feature-flags';
 import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
 import { AuthModule, API_KEY_VALIDATOR, SERVICE_ACCOUNT_VALIDATOR } from '@zarax/shared-auth';
@@ -55,8 +56,8 @@ const healthIndicatorService = {
     }),
     HealthModule.forRoot({
       indicators: [
-        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
-        createRedisHealthIndicator(redis, healthIndicatorService) as never,
+        createPrismaHealthIndicator(prisma, healthIndicatorService),
+        createRedisHealthIndicator(redis, healthIndicatorService),
       ],
     }),
     MetricsModule.forRoot({ serviceName: 'api' }),
@@ -72,6 +73,7 @@ const healthIndicatorService = {
     }),
     // --- Production infrastructure standards (see docs/production-standards.md) ---
     AuditLogModule.forRoot(),
+    RedisCacheModule.forRoot({ redisUrl: process.env.REDIS_URL ?? '' }),
     FeatureFlagsModule.forRoot(),
     ApiStandardsModule.forRoot({
       redisUrl: process.env.REDIS_URL ?? '',
