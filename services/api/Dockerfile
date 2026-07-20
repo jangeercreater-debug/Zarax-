@@ -2,7 +2,7 @@
 # Build from the monorepo root: docker build -f services/api/Dockerfile .
 
 FROM node:20-alpine AS base
-RUN corepack enable
+RUN apk add --no-cache openssl1.1-compat && corepack enable
 WORKDIR /app
 
 # ---------------------------------------------------------------------------
