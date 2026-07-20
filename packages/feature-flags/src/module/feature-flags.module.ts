@@ -1,4 +1,5 @@
 import { Module, type DynamicModule } from '@nestjs/common';
+import { RedisCacheModule } from '@zarax/redis-client';
 
 import { FeatureFlagService } from '../feature-flag.service';
 
@@ -8,6 +9,9 @@ export class FeatureFlagsModule {
     return {
       module: FeatureFlagsModule,
       global: true,
+      imports: [
+        RedisCacheModule.forRoot({ redisUrl: process.env.REDIS_URL ?? '' }),
+      ],
       providers: [FeatureFlagService],
       exports: [FeatureFlagService],
     };
