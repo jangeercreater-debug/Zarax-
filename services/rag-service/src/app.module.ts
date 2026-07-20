@@ -4,12 +4,9 @@ import { AuditLogModule } from '@zarax/audit-log';
 import {
   ApiKeyRepository,
   createPrismaClient,
-  createPrismaHealthIndicator,
   PrismaClientModule,
   ServiceAccountRepository,
 } from '@zarax/database';
-import { createQdrantClient, createQdrantHealthIndicator } from '@zarax/qdrant-client';
-import { createRedisClient, createRedisHealthIndicator } from '@zarax/redis-client';
 import { AuthModule, API_KEY_VALIDATOR, SERVICE_ACCOUNT_VALIDATOR } from '@zarax/shared-auth';
 import { AppConfigModule } from '@zarax/shared-config';
 import { LoggerModule } from '@zarax/shared-logger';
@@ -21,12 +18,6 @@ import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
 // See services/api/src/app.module.ts for why these instances are built directly from
 // process.env here rather than via DI — the same reasoning applies to every service.
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
-const redis = createRedisClient({ url: process.env.REDIS_URL ?? '' });
-const qdrant = createQdrantClient({
-  url: process.env.QDRANT_URL ?? '',
-  apiKey: process.env.QDRANT_API_KEY,
-});
-const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<string, unknown>) => ({ [key]: { status: 'up', ...d } }), down: (d?: Record<string, unknown>) => ({ [key]: { status: 'down', ...d } }) }) } as never;
 
 @Module({
   imports: [
@@ -37,11 +28,7 @@ const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<stri
       pretty: process.env.NODE_ENV !== 'production',
     }),
     HealthModule.forRoot({
-      indicators: [
-        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
-        createRedisHealthIndicator(redis, healthIndicatorService) as never,
-        createQdrantHealthIndicator(qdrant, healthIndicatorService) as never,
-      ],
+      indicators: [],
     }),
     MetricsModule.forRoot({ serviceName: 'rag-service' }),
     AuthModule.forRoot({

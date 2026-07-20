@@ -2,7 +2,7 @@
 # Build from the monorepo root: docker build -f services/rag-service/Dockerfile .
 
 FROM node:20-alpine AS base
-RUN corepack enable
+RUN apk add --no-cache openssl && corepack enable
 WORKDIR /app
 
 FROM base AS pruner
