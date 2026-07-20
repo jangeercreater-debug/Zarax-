@@ -1,7 +1,6 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import { createEvent, EVENT_BUS, type EventBus } from '@zarax/event-bus';
 import { ExternalServiceError, TimeoutError } from '@zarax/shared-errors';
-import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 import type { TenantId, ToolExecutionCompletedPayload } from '@zarax/shared-types';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -17,10 +16,7 @@ interface PendingRequest {
 export class ToolCallBroker implements OnModuleInit {
   private readonly pending = new Map<string, PendingRequest>();
 
-  constructor(
-    @Inject(EVENT_BUS) private readonly eventBus: EventBus,
-    @Inject(ZARAX_LOGGER) private readonly _logger: ZaraxLogger,
-  ) {}
+  constructor(@Inject(EVENT_BUS) private readonly eventBus: EventBus) {}
 
   onModuleInit(): void {
     this.eventBus.subscribe('tool.execution_completed', (event) => {

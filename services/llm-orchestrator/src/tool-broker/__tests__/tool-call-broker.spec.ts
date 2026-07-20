@@ -1,5 +1,4 @@
 import { TimeoutError } from '@zarax/shared-errors';
-import type { ZaraxLogger } from '@zarax/shared-logger';
 import { asTenantId, type ZaraxEvent } from '@zarax/shared-types';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,7 +7,7 @@ import { ToolCallBroker } from '../tool-call-broker';
 function buildFakeEventBus() {
   const handlers = new Map<string, ((event: ZaraxEvent) => void)[]>();
   return {
-    publish: vi.fn(async () => undefined),
+    publish: vi.fn(async (_event: ZaraxEvent) => undefined),
     subscribe: vi.fn((eventType: string, handler: (event: ZaraxEvent) => void) => {
       const existing = handlers.get(eventType) ?? [];
       existing.push(handler);
@@ -20,12 +19,10 @@ function buildFakeEventBus() {
   };
 }
 
-const noopLogger = { log: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn(), verbose: vi.fn() } as unknown as ZaraxLogger;
-
 describe('ToolCallBroker', () => {
   it('resolves with the matching completed event payload', async () => {
     const eventBus = buildFakeEventBus();
-    const broker = new ToolCallBroker(eventBus as never, noopLogger);
+    const broker = new ToolCallBroker(eventBus as never);
     broker.onModuleInit();
 
     const resultPromise = broker.requestToolExecution({
@@ -37,7 +34,9 @@ describe('ToolCallBroker', () => {
     });
 
     // Grab the requestId the broker actually published so we can reply to it.
-    const publishedEvent = eventBus.publish.mock.calls[0]![0] as unknown as ZaraxEvent & {
+    const firstCall = eventBus.publish.mock.calls[0];
+    if (!firstCall) throw new Error('expected publish to have been called');
+    const publishedEvent = firstCall[0] as ZaraxEvent & {
       payload: { requestId: string };
     };
 
@@ -65,7 +64,7 @@ describe('ToolCallBroker', () => {
 
   it('rejects with TimeoutError if no completion arrives in time', async () => {
     const eventBus = buildFakeEventBus();
-    const broker = new ToolCallBroker(eventBus as never, noopLogger);
+    const broker = new ToolCallBroker(eventBus as never);
     broker.onModuleInit();
 
     await expect(
@@ -82,7 +81,7 @@ describe('ToolCallBroker', () => {
 
   it('ignores completion events for unrelated/unknown requestIds', async () => {
     const eventBus = buildFakeEventBus();
-    const broker = new ToolCallBroker(eventBus as never, noopLogger);
+    const broker = new ToolCallBroker(eventBus as never);
     broker.onModuleInit();
 
     // Should not throw or affect anything — just verifying no crash on a stray event.
