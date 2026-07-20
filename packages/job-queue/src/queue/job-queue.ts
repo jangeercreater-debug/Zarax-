@@ -43,7 +43,7 @@ export class JobQueue<TData, TResult = void> {
   constructor(private readonly options: JobQueueOptions<TData>) {
     const connection = createRedisClient({ url: options.redisUrl, maxRetriesPerRequest: null });
     this.queue = new Queue(options.name, { connection });
-    this.deadLetterQueue = new Queue(`${options.name}:dead-letter`, { connection });
+    this.deadLetterQueue = new Queue(`${options.name}-dead-letter`, { connection });
   }
 
   async add(jobName: string, data: TData, options: { delayMs?: number } = {}): Promise<void> {
