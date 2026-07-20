@@ -39,7 +39,7 @@ describe('ToolCatalogClient', () => {
     const tools = await client.getAvailableTools();
 
     expect(tools).toHaveLength(1);
-    expect(tools[0].name).toBe('get_current_datetime');
+    expect(tools[0]!.name).toBe('get_current_datetime');
   });
 
   it('caches the catalog and does not re-fetch within the TTL', async () => {

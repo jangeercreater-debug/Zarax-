@@ -19,7 +19,7 @@ export class ToolCallBroker implements OnModuleInit {
 
   constructor(
     @Inject(EVENT_BUS) private readonly eventBus: EventBus,
-    @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
+    @Inject(ZARAX_LOGGER) private readonly _logger: ZaraxLogger,
   ) {}
 
   onModuleInit(): void {
