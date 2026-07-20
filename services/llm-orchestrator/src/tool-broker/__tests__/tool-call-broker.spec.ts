@@ -37,7 +37,7 @@ describe('ToolCallBroker', () => {
     });
 
     // Grab the requestId the broker actually published so we can reply to it.
-    const publishedEvent = eventBus.publish.mock.calls[0][0] as ZaraxEvent & {
+    const publishedEvent = eventBus.publish.mock.calls[0]![0] as ZaraxEvent & {
       payload: { requestId: string };
     };
 
