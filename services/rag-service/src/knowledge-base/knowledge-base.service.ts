@@ -14,7 +14,7 @@ import { detectSourceType, extractFileText } from '../extractors/file-extractor'
 import { UrlExtractorService } from '../extractors/url-extractor';
 import { DocumentProcessingService } from '../processing/document-processing.service';
 import { EmbeddingService } from '../embeddings/embedding.service';
-import { VECTOR_STORE } from './knowledge-base.module';
+import { VECTOR_STORE } from './tokens';
 import type { DocumentResponseDto, SearchKnowledgeBaseResponseDto } from './dto/knowledge-base-response.dto';
 import type { IngestDocumentDto } from './dto/ingest-document.dto';
 import type { ListDocumentsDto } from './dto/list-documents.dto';

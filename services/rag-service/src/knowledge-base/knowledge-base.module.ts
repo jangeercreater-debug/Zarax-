@@ -8,8 +8,9 @@ import { UrlExtractorService } from '../extractors/url-extractor';
 import { DocumentProcessingService } from '../processing/document-processing.service';
 import { KnowledgeBaseController } from './knowledge-base.controller';
 import { KnowledgeBaseService } from './knowledge-base.service';
+import { VECTOR_STORE } from './tokens';
 
-export const VECTOR_STORE = Symbol('VECTOR_STORE');
+export { VECTOR_STORE };
 
 @Module({
   controllers: [KnowledgeBaseController],

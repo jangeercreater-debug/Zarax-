@@ -10,7 +10,7 @@ import type { Job } from 'bullmq';
 
 import { chunkText } from '../chunking/text-chunker';
 import { EmbeddingService } from '../embeddings/embedding.service';
-import { VECTOR_STORE } from '../knowledge-base/knowledge-base.module';
+import { VECTOR_STORE } from '../knowledge-base/tokens';
 
 interface ProcessDocumentJobData {
   documentId: string;
