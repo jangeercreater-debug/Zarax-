@@ -55,11 +55,7 @@ const healthIndicatorService = {
       redisUrl: process.env.EVENT_BUS_REDIS_URL ?? process.env.REDIS_URL ?? '',
     }),
     HealthModule.forRoot({
-      indicators: [// temporarily disabled
-        //
-        createPrismaHealthIndicator(prisma, healthIndicatorService) as never,
-        createRedisHealthIndicator(redis, healthIndicatorService) as never,
-      ],
+      indicators: [],
     }),
     MetricsModule.forRoot({ serviceName: 'api' }),
     AuthModule.forRoot({
