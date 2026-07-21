@@ -18,6 +18,10 @@ export function parseRoomName(roomName: string): RoomIdentity {
   if (!match?.groups) {
     throw new ValidationError(`Room name '${roomName}' does not match the expected ZaraX format.`);
   }
-  const { tenantId, agentId, callId } = match.groups;
+  const { tenantId, agentId, callId } = match.groups as {
+    tenantId: string;
+    agentId: string;
+    callId: string;
+  };
   return { tenantId, agentId, callId };
 }
