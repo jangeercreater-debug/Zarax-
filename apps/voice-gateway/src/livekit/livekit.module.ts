@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_CONFIG, type AppConfigService } from '@zarax/shared-config';
 import { ZARAX_LOGGER, type ZaraxLogger } from '@zarax/shared-logger';
 
-import type { VoiceGatewayEnv } from '../config/env.schema';
 import { LiveKitRoomService } from './livekit-room.service';
 import { LiveKitTokenService } from './livekit-token.service';
 import { LiveKitWebhookVerifier } from './livekit-webhook-verifier.service';
@@ -11,26 +9,32 @@ import { LiveKitWebhookVerifier } from './livekit-webhook-verifier.service';
   providers: [
     {
       provide: LiveKitRoomService,
-      useFactory: (config: AppConfigService<VoiceGatewayEnv>, logger: ZaraxLogger): LiveKitRoomService =>
+      useFactory: (logger: ZaraxLogger): LiveKitRoomService =>
         new LiveKitRoomService(
-          config.get('LIVEKIT_URL'),
-          config.get('LIVEKIT_API_KEY'),
-          config.get('LIVEKIT_API_SECRET'),
+          process.env.LIVEKIT_URL ?? '',
+          process.env.LIVEKIT_API_KEY ?? '',
+          process.env.LIVEKIT_API_SECRET ?? '',
           logger,
         ),
-      inject: [APP_CONFIG, ZARAX_LOGGER],
+      inject: [ZARAX_LOGGER],
     },
     {
       provide: LiveKitTokenService,
-      useFactory: (config: AppConfigService<VoiceGatewayEnv>, logger: ZaraxLogger): LiveKitTokenService =>
-        new LiveKitTokenService(config.get('LIVEKIT_API_KEY'), config.get('LIVEKIT_API_SECRET'), logger),
-      inject: [APP_CONFIG, ZARAX_LOGGER],
+      useFactory: (logger: ZaraxLogger): LiveKitTokenService =>
+        new LiveKitTokenService(
+          process.env.LIVEKIT_API_KEY ?? '',
+          process.env.LIVEKIT_API_SECRET ?? '',
+          logger,
+        ),
+      inject: [ZARAX_LOGGER],
     },
     {
       provide: LiveKitWebhookVerifier,
-      useFactory: (config: AppConfigService<VoiceGatewayEnv>): LiveKitWebhookVerifier =>
-        new LiveKitWebhookVerifier(config.get('LIVEKIT_API_KEY'), config.get('LIVEKIT_API_SECRET')),
-      inject: [APP_CONFIG],
+      useFactory: (): LiveKitWebhookVerifier =>
+        new LiveKitWebhookVerifier(
+          process.env.LIVEKIT_API_KEY ?? '',
+          process.env.LIVEKIT_API_SECRET ?? '',
+        ),
     },
   ],
   exports: [LiveKitRoomService, LiveKitTokenService, LiveKitWebhookVerifier],
