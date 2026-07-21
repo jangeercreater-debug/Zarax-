@@ -1,4 +1,12 @@
-import type { HealthIndicatorService } from '@nestjs/terminus';
+/**
+ * Structural type matching the shape of `HealthIndicatorService` from `@nestjs/terminus`.
+ * The real `HealthIndicatorService` export only exists in `@nestjs/terminus@11+`; this
+ * service pins to v10, which provides the same runtime shape via injection but no
+ * exported type. Using a structural type keeps us decoupled from the version bump.
+ */
+interface HealthIndicatorServiceLike {
+  check(key: string): { up(): unknown; down(opts: Record<string, unknown>): unknown };
+}
 
 /**
  * A full round-trip health check against Deepgram would mean opening (and tearing
@@ -9,7 +17,7 @@ import type { HealthIndicatorService } from '@nestjs/terminus';
  */
 export function createDeepgramHealthIndicator(
   apiKey: string | undefined,
-  healthIndicatorService: HealthIndicatorService,
+  healthIndicatorService: HealthIndicatorServiceLike,
 ) {
   return async () => {
     const indicator = healthIndicatorService.check('deepgram');

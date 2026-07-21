@@ -19,8 +19,6 @@ export interface DeepgramSessionEvents {
   close: [];
 }
 
-const CONNECTION_TIMEOUT_MS = 5000;
-
 /**
  * One instance per active WebSocket connection to this service — a live Deepgram
  * connection is inherently stateful and per-call, unlike the stateless HTTP layer
@@ -112,7 +110,12 @@ export class DeepgramLiveSession extends EventEmitter {
    * the caller (transcription gateway) is responsible for that format contract. */
   sendAudio(chunk: Buffer): void {
     if (!this.isOpen) return; // Drop audio that arrives before Deepgram's socket is ready.
-    this.connection.send(chunk);
+    // Deepgram SDK's `send()` accepts `SocketDataLike` (string | ArrayBufferLike | Blob |
+    // ArrayBufferView). Node's `Buffer` is technically an ArrayBufferView, but the SDK's
+    // type declarations don't recognize the Node-specific type; pass a fresh ArrayBuffer
+    // slice to satisfy the contract without a cast.
+    const arrayBuffer = chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength);
+    this.connection.send(arrayBuffer);
   }
 
   /** Signals end-of-stream to Deepgram so it flushes any final transcript, then closes. */
