@@ -15,10 +15,10 @@ import { encodeRoomName } from './room-name.util';
 @Injectable()
 export class RoomsService {
   constructor(
-    private readonly agentRepository: AgentRepository,
-    private readonly liveKitRoomService: LiveKitRoomService,
-    private readonly liveKitTokenService: LiveKitTokenService,
-    private readonly callSessionService: CallSessionService,
+    @Inject(AgentRepository) private readonly agentRepository: AgentRepository,
+    @Inject(LiveKitRoomService) private readonly liveKitRoomService: LiveKitRoomService,
+    @Inject(LiveKitTokenService) private readonly liveKitTokenService: LiveKitTokenService,
+    @Inject(CallSessionService) private readonly callSessionService: CallSessionService,
     @Inject(APP_CONFIG) private readonly config: AppConfigService<VoiceGatewayEnv>,
   ) {}
 

@@ -25,8 +25,8 @@ export class OutboundCallService {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfigService<VoiceGatewayEnv>,
-    private readonly liveKitRoomService: LiveKitRoomService,
-    private readonly callSessionService: CallSessionService,
+    @Inject(LiveKitRoomService) private readonly liveKitRoomService: LiveKitRoomService,
+    @Inject(CallSessionService) private readonly callSessionService: CallSessionService,
     @Inject(PRISMA_CLIENT) prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
