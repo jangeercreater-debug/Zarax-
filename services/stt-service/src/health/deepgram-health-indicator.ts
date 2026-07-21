@@ -5,7 +5,10 @@
  * exported type. Using a structural type keeps us decoupled from the version bump.
  */
 interface HealthIndicatorServiceLike {
-  check(key: string): { up(): unknown; down(opts: Record<string, unknown>): unknown };
+  check(key: string): {
+    up(): Record<string, unknown>;
+    down(opts: Record<string, unknown>): Record<string, unknown>;
+  };
 }
 
 /**
