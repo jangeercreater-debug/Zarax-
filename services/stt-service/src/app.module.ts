@@ -18,7 +18,7 @@ const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<stri
       pretty: process.env.NODE_ENV !== 'production',
     }),
     HealthModule.forRoot({
-      indicators: [createDeepgramHealthIndicator(process.env.DEEPGRAM_API_KEY, healthIndicatorService)],
+      indicators: [createDeepgramHealthIndicator(process.env.DEEPGRAM_API_KEY, healthIndicatorService) as never],
     }),
     MetricsModule.forRoot({ serviceName: 'stt-service' }),
     TranscriptionModule,
