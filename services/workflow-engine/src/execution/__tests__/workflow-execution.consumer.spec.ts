@@ -1,4 +1,3 @@
-import { asTenantId } from '@zarax/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let capturedHandler: ((job: { data: Record<string, unknown> }) => Promise<void>) | undefined;
