@@ -29,9 +29,9 @@ model Tenant {
   status    TenantStatus @default(PENDING_SETUP)
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
-  /** Soft delete — see docs/data-retention-policy.md. Never physically removed by
-   * application code; a scheduled purge job (future work) hard-deletes rows past the
-   * retention window. */
+  /// Soft delete — see docs/data-retention-policy.md. Never physically removed by
+  /// application code; a scheduled purge job (future work) hard-deletes rows past the
+  /// retention window.
   deletedAt DateTime?    @map("deleted_at")
 
   memberships     TenantMembership[]
@@ -148,14 +148,14 @@ model Agent {
   id        String   @id @default(uuid())
   tenantId  String   @map("tenant_id")
   name      String
-  /** Doubles as the publish/draft flag — see services/api's Voice Agent Builder
-   * (AgentsService.publish()/unpublish()). false ("draft") by default: a newly
-   * created agent isn't reachable by real callers until explicitly published
-   * (voice-gateway's room creation calls AgentRepository.assertPublishedForTenant()). */
+  /// Doubles as the publish/draft flag — see services/api's Voice Agent Builder
+  /// (AgentsService.publish()/unpublish()). false ("draft") by default: a newly
+  /// created agent isn't reachable by real callers until explicitly published
+  /// (voice-gateway's room creation calls AgentRepository.assertPublishedForTenant()).
   isActive  Boolean  @default(false) @map("is_active")
   config    Json     @default("{}")
-  /** Incremented on every AgentRepository.createVersion() call — the "current"
-   * version number, mirrored into the latest AgentVersion row. */
+  /// Incremented on every AgentRepository.createVersion() call — the "current"
+  /// version number, mirrored into the latest AgentVersion row.
   currentVersion Int @default(1) @map("current_version")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -182,8 +182,8 @@ model AgentVersion {
   tenantId  String   @map("tenant_id")
   version   Int
   config    Json
-  /** userId of whoever triggered this version, or null for system-generated
-   * (e.g. a rollback triggered by an automated process). */
+  /// userId of whoever triggered this version, or null for system-generated
+  /// (e.g. a rollback triggered by an automated process).
   createdBy String?  @map("created_by")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -282,7 +282,7 @@ model FeatureFlag {
   key                String   @id
   description        String
   defaultEnabled     Boolean  @default(false) @map("default_enabled")
-  /** 0-100. Only consulted when no explicit tenant override exists. */
+  /// 0-100. Only consulted when no explicit tenant override exists.
   rolloutPercentage  Int      @default(0) @map("rollout_percentage")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
