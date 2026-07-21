@@ -3,7 +3,7 @@ import { AppError, ExternalServiceError } from '@zarax/shared-errors';
 import type { ZaraxLogger } from '@zarax/shared-logger';
 
 const CARTESIA_BYTES_ENDPOINT = 'https://api.cartesia.ai/tts/bytes';
-const DEFAULT_MODEL_ID = 'sonic-english';
+const DEFAULT_MODEL_ID = 'sonic-2';
 const DEFAULT_SAMPLE_RATE = 24000;
 
 export interface SynthesizeOptions {
