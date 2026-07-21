@@ -1,5 +1,6 @@
 {
   "extends": "@zarax/tsconfig/nestjs.json",
   "compilerOptions": { "outDir": "dist", "rootDir": "src" },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.spec.ts", "**/__tests__/**"]
 }
