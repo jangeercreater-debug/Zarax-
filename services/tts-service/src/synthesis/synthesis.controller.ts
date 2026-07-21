@@ -1,4 +1,4 @@
-import { Body, Controller, Header, Inject, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Inject, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { InternalTokenGuard } from '@zarax/shared-auth';
 
@@ -12,14 +12,14 @@ export class SynthesisController {
   constructor(@Inject(CARTESIA_REST_CLIENT) private readonly cartesiaClient: CartesiaRestClient) {}
 
   @Post()
-  @Header('Content-Type', 'audio/wav')
-  async synthesize(@Body() dto: SynthesizeDto, @Res({ passthrough: true }) res: Response): Promise<Buffer> {
+  async synthesize(@Body() dto: SynthesizeDto, @Res() res: Response): Promise<void> {
     const audio = await this.cartesiaClient.synthesize({
       text: dto.text,
       voiceId: dto.voiceId,
       modelId: dto.modelId,
     });
+    res.setHeader('Content-Type', 'audio/wav');
     res.setHeader('Content-Length', audio.length);
-    return audio;
+    res.end(audio);
   }
 }
