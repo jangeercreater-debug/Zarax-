@@ -39,6 +39,7 @@ model Tenant {
   serviceAccounts ServiceAccount[]
   agents          Agent[]
   calls           Call[]
+  phoneNumbers    PhoneNumber[]
 
   @@map("tenants")
 }
