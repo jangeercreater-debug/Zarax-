@@ -5,8 +5,6 @@
     "dockerfilePath": "services/tool-executor/Dockerfile"
   },
   "deploy": {
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
