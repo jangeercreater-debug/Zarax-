@@ -6,7 +6,7 @@ import type { ToolDefinition, ToolExecutionContext } from '../registry/tool-defi
 
 const paramsSchema = z.object({
   message: z.string().min(1).max(2000).describe('The notification message to deliver.'),
-  urgency: z.enum(['low', 'normal', 'high']).default('normal'),
+  urgency: z.enum(['low', 'normal', 'high']),
 });
 
 // Shared across every invocation of this tool in the process — a single outbound
