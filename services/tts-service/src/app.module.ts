@@ -18,7 +18,7 @@ const healthIndicatorService = { check: (key: string) => ({ up: (d?: Record<stri
       pretty: process.env.NODE_ENV !== 'production',
     }),
     HealthModule.forRoot({
-      indicators: [createCartesiaHealthIndicator(process.env.CARTESIA_API_KEY, healthIndicatorService)],
+      indicators: [createCartesiaHealthIndicator(process.env.CARTESIA_API_KEY, healthIndicatorService) as never],
     }),
     MetricsModule.forRoot({ serviceName: 'tts-service' }),
     SynthesisModule,
