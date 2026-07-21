@@ -1,0 +1,1 @@
+export const CARTESIA_REST_CLIENT = Symbol('CARTESIA_REST_CLIENT');

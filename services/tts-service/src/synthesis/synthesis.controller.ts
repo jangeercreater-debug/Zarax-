@@ -2,7 +2,7 @@ import { Body, Controller, Header, Inject, Post, Res, UseGuards } from '@nestjs/
 import type { Response } from 'express';
 import { InternalTokenGuard } from '@zarax/shared-auth';
 
-import { CARTESIA_REST_CLIENT } from './synthesis.module';
+import { CARTESIA_REST_CLIENT } from './synthesis.tokens';
 import type { CartesiaRestClient } from '../cartesia/cartesia-rest.client';
 import { SynthesizeDto } from './dto/synthesize.dto';
 

@@ -7,8 +7,10 @@ import { CartesiaRestClient } from '../cartesia/cartesia-rest.client';
 import type { TtsServiceEnv } from '../config/env.schema';
 import { SynthesisController } from './synthesis.controller';
 import { SynthesisGatewayService } from './synthesis-gateway.service';
+import { CARTESIA_REST_CLIENT } from './synthesis.tokens';
 
-export const CARTESIA_REST_CLIENT = Symbol('CARTESIA_REST_CLIENT');
+export { CARTESIA_REST_CLIENT } from './synthesis.tokens';
+
 
 @Module({
   controllers: [SynthesisController],
