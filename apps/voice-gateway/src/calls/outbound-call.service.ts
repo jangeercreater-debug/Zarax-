@@ -53,7 +53,7 @@ export class OutboundCallService {
     await this.liveKitRoomService.ensureRoom(roomName);
     await this.callSessionService.registerPendingCall(tenantId, roomName, params.agentId, callId);
 
-    await this.sipClient.createSIPParticipant(sipTrunkId, params.toNumber, roomName, {
+    await this.sipClient.createSipParticipant(sipTrunkId, params.toNumber, roomName, {
       participantIdentity: sipIdentity,
       participantName: params.fromNumber ?? 'ZaraX Agent',
     });
