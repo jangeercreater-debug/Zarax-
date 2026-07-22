@@ -50,7 +50,7 @@ export class VoiceSession {
   constructor(private readonly opts: VoiceSessionOptions) {}
 
   async start(): Promise<void> {
-    const token = this.mintAgentToken();
+    const token = await this.mintAgentToken();
     await this.room.connect(this.opts.livekitUrl, token);
 
     this.opts.logger.log('VoiceSession: joined room', {
@@ -71,13 +71,15 @@ export class VoiceSession {
     this.subscribeToCallerAudio();
   }
 
-  private mintAgentToken(): string {
+  private async mintAgentToken(): Promise<string> {
     const at = new AccessToken(this.opts.livekitApiKey, this.opts.livekitApiSecret, {
       identity: `agent-${this.opts.callId}`,
     });
     at.addGrant({ roomJoin: true, room: this.opts.roomName, canPublish: true, canSubscribe: true });
-    // toJwt() in livekit-server-sdk v2 returns a string (sync or async depending on version)
-    return at.toJwt() as unknown as string;
+    // livekit-server-sdk v2's toJwt() is async. Casting instead of awaiting yields a
+    // Promise object, which stringifies to "[object Promise]" and makes the LiveKit
+    // signal server reject the connection with a 401.
+    return at.toJwt();
   }
 
   private setupStt(): void {
