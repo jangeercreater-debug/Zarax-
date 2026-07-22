@@ -63,12 +63,19 @@ export class VoiceSession {
     });
 
     this.publisher = new LiveKitAudioPublisher(this.room, this.opts.sampleRate, this.opts.numChannels);
+    this.opts.logger.log('VoiceSession: publishing track', { callId: this.opts.callId });
     await this.publisher.start();
+    this.opts.logger.log('VoiceSession: track published', { callId: this.opts.callId });
 
     this.setupStt();
 
+    this.opts.logger.log('VoiceSession: welcome check', {
+      callId: this.opts.callId,
+      hasWelcome: Boolean(this.opts.agentConfig.welcomeMessage),
+    });
     if (this.opts.agentConfig.welcomeMessage) {
       await this.speak(this.opts.agentConfig.welcomeMessage);
+      this.opts.logger.log('VoiceSession: welcome done', { callId: this.opts.callId });
     }
 
     this.startListening();
