@@ -1,16 +1,17 @@
-import { AudioFrame, AudioSource, LocalAudioTrack, TrackPublishOptions } from '@livekit/rtc-node';
+import {
+  AudioFrame,
+  AudioSource,
+  LocalAudioTrack,
+  TrackPublishOptions,
+  TrackSource,
+} from '@livekit/rtc-node';
 import type { Room } from '@livekit/rtc-node';
 
-const FRAME_DURATION_MS = 20; // 20ms per frame — Opus-compatible
+const FRAME_DURATION_MS = 20;
 
-/**
- * Publishes PCM audio to a LiveKit room track. Call push() to queue audio chunks;
- * they are emitted as fixed-size AudioFrame objects at the correct sample rate.
- */
 export class LiveKitAudioPublisher {
   private readonly source: AudioSource;
   private readonly track: LocalAudioTrack;
-  /** Publication SID, captured at publish time — unpublishTrack() takes the SID, not the track. */
   private publicationSid: string | undefined;
 
   constructor(
@@ -28,18 +29,26 @@ export class LiveKitAudioPublisher {
     if (!participant) {
       throw new Error('LiveKitAudioPublisher: room has no localParticipant');
     }
-    const publication = await participant.publishTrack(this.track, new TrackPublishOptions());
+    const options = new TrackPublishOptions();
+    // Required. Publishing with an unset source makes the native rtc-node engine
+    // panic ("called Option::unwrap() on a None value" in rtc_session.rs).
+    options.source = TrackSource.SOURCE_MICROPHONE;
+    const publication = await participant.publishTrack(this.track, options);
     this.publicationSid = publication.sid;
   }
 
-  /** Push a Buffer of 16-bit LE PCM. Splits into fixed-size frames automatically. */
   async push(pcmBuffer: Buffer): Promise<void> {
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
     const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
 
     for (let offset = 0; offset + bytesPerFrame <= pcmBuffer.length; offset += bytesPerFrame) {
-      const slice = pcmBuffer.subarray(offset, offset + bytesPerFrame);
-      const int16 = new Int16Array(slice.buffer.slice(slice.byteOffset, slice.byteOffset + slice.byteLength));
+      // Zero-copy Int16Array view. LiveKit docs warn against buffer.slice() here --
+      // Node marks it unstable and it can append large bursts of noise.
+      const int16 = new Int16Array(
+        pcmBuffer.buffer,
+        pcmBuffer.byteOffset + offset,
+        samplesPerChannel * this.numChannels,
+      );
       const frame = new AudioFrame(int16, this.sampleRate, this.numChannels, samplesPerChannel);
       await this.source.captureFrame(frame);
     }
