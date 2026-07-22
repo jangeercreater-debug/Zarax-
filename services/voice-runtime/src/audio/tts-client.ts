@@ -18,6 +18,7 @@ export class TtsClient {
   private readonly audioHandlers: AudioHandler[] = [];
   private readonly doneHandlers: DoneHandler[] = [];
   private readonly errorHandlers: ErrorHandler[] = [];
+  private pendingText: string | null = null;
 
   constructor(private readonly options: TtsClientOptions) {}
 
@@ -36,6 +37,9 @@ export class TtsClient {
 
     this.ws.on('open', () => {
       this.ws?.send(JSON.stringify({ type: 'config', callId: this.options.callId }));
+      const queued = this.pendingText;
+      this.pendingText = null;
+      if (queued !== null) this.synthesize(queued);
     });
 
     this.ws.on('message', (data: Buffer | string) => {
@@ -57,7 +61,11 @@ export class TtsClient {
   synthesize(text: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'synthesize', text }));
+      return;
     }
+    // connect() returns before the upgrade completes, so callers routinely reach here
+    // first. Dropping the text would leave the caller awaiting a 'done' that never comes.
+    this.pendingText = text;
   }
 
   cancel(): void {
