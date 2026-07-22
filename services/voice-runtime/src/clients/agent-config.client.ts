@@ -43,7 +43,16 @@ export class AgentConfigClient {
     if (!response.ok) {
       throw new ExternalServiceError('services-api', `Could not fetch agent config: HTTP ${response.status}`);
     }
-    const body = (await response.json()) as { config: AgentConfig };
-    return body.config;
+    // services-api wraps every controller return in a `data` envelope via its global
+    // response interceptor, so the payload is { data: { config } } over the wire.
+    const body = (await response.json()) as {
+      config?: AgentConfig;
+      data?: { config?: AgentConfig };
+    };
+    const config = body.config ?? body.data?.config;
+    if (!config) {
+      throw new ExternalServiceError('services-api', 'Agent config response had no `config` field.');
+    }
+    return config;
   }
 }
