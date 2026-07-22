@@ -1,6 +1,12 @@
 # syntax=docker/dockerfile:1
-FROM node:20-alpine AS base
-RUN apk add --no-cache openssl && corepack enable
+# voice-runtime uses @livekit/rtc-node, a native module that ships ONLY glibc
+# prebuilt binaries (linux-x64-gnu / linux-arm64-gnu) — no musl build exists.
+# Alpine (musl libc) therefore cannot load the native binding at runtime, so this
+# service must build and run on a glibc base image (Debian slim) unlike the other
+# Node services in this monorepo which use node:20-alpine.
+FROM node:20-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
 WORKDIR /app
 
 FROM base AS pruner
@@ -17,7 +23,7 @@ RUN pnpm --filter @zarax/database exec prisma generate
 RUN pnpm turbo run build --filter=@zarax/voice-runtime...
 
 FROM base AS runner
-RUN addgroup -S zarax && adduser -S zarax -G zarax
+RUN groupadd -r zarax && useradd -r -g zarax zarax
 COPY --from=installer /app .
 USER zarax
 
