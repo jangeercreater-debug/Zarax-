@@ -36,7 +36,6 @@ export class TtsClient {
     this.ws = new WebSocket(url.toString());
 
     this.ws.on('open', () => {
-      this.ws?.send(JSON.stringify({ type: 'config', callId: this.options.callId }));
       const queued = this.pendingText;
       this.pendingText = null;
       if (queued !== null) this.synthesize(queued);
@@ -60,7 +59,9 @@ export class TtsClient {
 
   synthesize(text: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'synthesize', text }));
+      // tts-service expects exactly one control frame: { text, voiceId }. A separate
+      // 'config' handshake is rejected and the socket closed with code 1003.
+      this.ws.send(JSON.stringify({ text, voiceId: this.options.voiceId }));
       return;
     }
     // connect() returns before the upgrade completes, so callers routinely reach here
