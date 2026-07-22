@@ -12,7 +12,7 @@ try:
     with urllib.request.urlopen(req, timeout=20) as r:
         print("STATUS:", r.status)
         print("OK -- token is correct")
-        print(r.read().decode()[:200])
+        print(r.read().decode()[:900])
 except urllib.error.HTTPError as e:
     print("STATUS:", e.code)
-    print(e.read().decode()[:200])
+    print(e.read().decode()[:900])

@@ -14,6 +14,10 @@ import { SttClient, type SttEvent } from '../audio/stt-client';
 import { TtsClient } from '../audio/tts-client';
 import { LiveKitAudioPublisher } from '../audio/livekit-audio-publisher';
 
+// Cartesia voice used when an agent has no explicit voice selected -- the builder's
+// "Default voice" option stores no voiceId, and Cartesia requires a concrete id.
+const DEFAULT_VOICE_ID = 'a0e99841-438c-4a64-b679-ae501e7d6091';
+
 type SessionState = 'connecting' | 'listening' | 'transcribing' | 'generating' | 'speaking' | 'ended';
 
 export interface VoiceSessionOptions {
@@ -228,7 +232,7 @@ export class VoiceSession {
       ttsServiceUrl: this.opts.ttsServiceUrl,
       internalToken: this.opts.ttsInternalToken,
       callId: this.opts.callId,
-      voiceId: this.opts.agentConfig.voiceId,
+      voiceId: this.opts.agentConfig.voiceId ?? DEFAULT_VOICE_ID,
     });
     this.currentTts = tts;
 
