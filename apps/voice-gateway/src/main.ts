@@ -10,6 +10,7 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { json } from 'express';
 import { GlobalExceptionFilter } from '@zarax/shared-errors';
 import { correlationIdMiddleware, ZaraxLogger } from '@zarax/shared-logger';
 import { setupGracefulShutdown } from '@zarax/shared-observability';
@@ -31,6 +32,19 @@ async function bootstrap(): Promise<void> {
     rawBody: true,
   });
   app.useLogger(logger);
+
+  // LiveKit POSTs webhooks with Content-Type: application/webhook+json. Nest's built-in
+  // body parser -- and therefore the `rawBody: true` capture above -- only matches
+  // application/json, so without this the webhook body is never read, req.rawBody stays
+  // undefined, and LiveKitWebhookVerifier rejects every delivery with a 401.
+  app.use(
+    json({
+      type: 'application/webhook+json',
+      verify: (req, _res, buf) => {
+        (req as unknown as { rawBody: Buffer }).rawBody = buf;
+      },
+    }),
+  );
 
   app.use(correlationIdMiddleware);
   app.useGlobalFilters(new GlobalExceptionFilter(logger));
