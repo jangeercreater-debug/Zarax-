@@ -12,7 +12,7 @@ const logger = new ZaraxLogger({ serviceName: 'voice-runtime', level: process.en
 
 @Module({
   imports: [
-    AppConfigModule.forRoot({ schema: voiceRuntimeEnvSchema }),
+    AppConfigModule.forRoot({ schema: voiceRuntimeEnvSchema as never }),
     LoggerModule.forRoot({ serviceName: 'voice-runtime', level: process.env.LOG_LEVEL ?? 'info', pretty: process.env.NODE_ENV !== 'production' }),
     HealthModule.forRoot({
       indicators: [],
