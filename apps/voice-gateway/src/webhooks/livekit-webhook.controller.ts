@@ -1,4 +1,4 @@
-import { Controller, Headers, HttpCode, HttpStatus, Post, Req, type RawBodyRequest } from '@nestjs/common';
+import { BadRequestException, Controller, Headers, HttpCode, HttpStatus, Post, Req, type RawBodyRequest } from '@nestjs/common';
 import { Public } from '@zarax/shared-auth';
 import type { Request } from 'express';
 
@@ -22,6 +22,14 @@ export class LiveKitWebhookController {
     // Signature verification requires the exact original bytes — main.ts enables
     // `rawBody: true` specifically so req.rawBody is populated here.
     const rawBody = req.rawBody?.toString('utf8') ?? '';
+    // TEMPORARY DIAGNOSTIC -- surfaces why signature verification fails.
+    if (process.env.LIVEKIT_WEBHOOK_DEBUG === 'true') {
+      throw new BadRequestException(
+        `WEBHOOK_DEBUG contentType=${req.headers['content-type'] ?? 'NONE'} ` +
+          `rawBodyPresent=${req.rawBody !== undefined} rawBodyLen=${rawBody.length} ` +
+          `authHeaderPresent=${authHeader !== undefined} bodyPreview=${rawBody.slice(0, 80)}`,
+      );
+    }
     const event = await this.verifier.verifyAndParse(rawBody, authHeader);
 
     switch (event.event) {
