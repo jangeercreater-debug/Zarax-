@@ -2,8 +2,8 @@ import {
   AudioFrame,
   AudioSource,
   LocalAudioTrack,
+  LocalTrackPublication,
   TrackPublishOptions,
-  TrackSource,
 } from '@livekit/rtc-node';
 import type { Room } from '@livekit/rtc-node';
 
@@ -12,7 +12,9 @@ const FRAME_DURATION_MS = 20;
 export class LiveKitAudioPublisher {
   private readonly source: AudioSource;
   private readonly track: LocalAudioTrack;
-  private publicationSid: string | undefined;
+  private published = false;
+  private publication: LocalTrackPublication | null = null;
+  private leftover: Buffer = Buffer.alloc(0);
 
   constructor(
     private readonly room: Room,
@@ -24,43 +26,54 @@ export class LiveKitAudioPublisher {
   }
 
   async start(): Promise<void> {
-    if (this.publicationSid) return;
-    const participant = this.room.localParticipant;
-    if (!participant) {
-      throw new Error('LiveKitAudioPublisher: room has no localParticipant');
+    if (this.published) return;
+    const localParticipant = this.room.localParticipant;
+    if (!localParticipant) {
+      throw new Error('LiveKitAudioPublisher: room.localParticipant is unavailable (room not connected?)');
     }
-    const options = new TrackPublishOptions();
-    // Required. Publishing with an unset source makes the native rtc-node engine
-    // panic ("called Option::unwrap() on a None value" in rtc_session.rs).
-    options.source = TrackSource.SOURCE_MICROPHONE;
-    const publication = await participant.publishTrack(this.track, options);
-    this.publicationSid = publication.sid;
+    this.publication = await localParticipant.publishTrack(this.track, new TrackPublishOptions());
+    this.published = true;
   }
 
   async push(pcmBuffer: Buffer): Promise<void> {
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
     const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
 
-    for (let offset = 0; offset + bytesPerFrame <= pcmBuffer.length; offset += bytesPerFrame) {
-      // Zero-copy Int16Array view. LiveKit docs warn against buffer.slice() here --
-      // Node marks it unstable and it can append large bursts of noise.
-      const int16 = new Int16Array(
-        pcmBuffer.buffer,
-        pcmBuffer.byteOffset + offset,
-        samplesPerChannel * this.numChannels,
-      );
+    const combined = this.leftover.length > 0 ? Buffer.concat([this.leftover, pcmBuffer]) : pcmBuffer;
+
+    let offset = 0;
+    for (; offset + bytesPerFrame <= combined.length; offset += bytesPerFrame) {
+      const slice = combined.subarray(offset, offset + bytesPerFrame);
+      const int16 = new Int16Array(slice.buffer, slice.byteOffset, slice.length / 2);
       const frame = new AudioFrame(int16, this.sampleRate, this.numChannels, samplesPerChannel);
       await this.source.captureFrame(frame);
     }
+
+    this.leftover = combined.subarray(offset);
+  }
+
+  async flush(): Promise<void> {
+    if (this.leftover.length === 0) return;
+
+    const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
+    const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
+
+    const padded = Buffer.alloc(bytesPerFrame);
+    this.leftover.copy(padded);
+    const int16 = new Int16Array(padded.buffer, padded.byteOffset, padded.length / 2);
+    const frame = new AudioFrame(int16, this.sampleRate, this.numChannels, samplesPerChannel);
+    await this.source.captureFrame(frame);
+
+    this.leftover = Buffer.alloc(0);
   }
 
   async stop(): Promise<void> {
-    const sid = this.publicationSid;
-    if (!sid) return;
-    const participant = this.room.localParticipant;
-    if (participant) {
-      await participant.unpublishTrack(sid);
+    if (!this.published) return;
+    const localParticipant = this.room.localParticipant;
+    if (localParticipant && this.publication) {
+      await localParticipant.unpublishTrack(this.publication.sid);
     }
-    this.publicationSid = undefined;
+    this.published = false;
+    this.publication = null;
   }
 }

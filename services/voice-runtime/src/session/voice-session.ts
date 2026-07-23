@@ -246,11 +246,22 @@ export class VoiceSession {
     await new Promise<void>((resolve) => {
       tts.onAudio(async (chunk: Buffer) => {
         if (this.state === 'speaking' && this.currentTts === tts) {
-          await this.publisher.push(chunk).catch(() => undefined);
+          await this.publisher.push(chunk).catch((error: Error) => {
+            this.opts.logger.error('VoiceSession: audio push failed', {
+              callId: this.opts.callId,
+              message: error.message,
+            });
+          });
         }
       });
       tts.onDone(() => {
         if (this.currentTts === tts) this.currentTts = null;
+        void this.publisher.flush().catch((error: Error) => {
+          this.opts.logger.error('VoiceSession: audio flush failed', {
+            callId: this.opts.callId,
+            message: error.message,
+          });
+        });
         resolve();
       });
       tts.onError((error: Error) => {
