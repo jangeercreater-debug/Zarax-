@@ -4,6 +4,7 @@ import {
   LocalAudioTrack,
   LocalTrackPublication,
   TrackPublishOptions,
+  TrackSource,
 } from '@livekit/rtc-node';
 import type { Room } from '@livekit/rtc-node';
 
@@ -32,7 +33,9 @@ export class LiveKitAudioPublisher {
     if (!localParticipant) {
       throw new Error('LiveKitAudioPublisher: room.localParticipant is unavailable (room not connected?)');
     }
-    this.publication = await localParticipant.publishTrack(this.track, new TrackPublishOptions());
+    const options = new TrackPublishOptions();
+    options.source = TrackSource.SOURCE_MICROPHONE;
+    this.publication = await localParticipant.publishTrack(this.track, options);
     this.published = true;
   }
 

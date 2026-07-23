@@ -71,11 +71,11 @@ _url = ("https://meet.livekit.io/custom?liveKitUrl="
 open("JOIN.md", "w").write(
     "# ZaraX Voice Call\n\n## [TAP HERE TO JOIN THE CALL](" + _url + ")\n\n"
     "Room: `" + body.get("roomName") + "`\n\nToken expires in 15 minutes.\n")
-subprocess.run(["git", "checkout", "-B", "join-link"], check=True)
-subprocess.run(["git", "add", "JOIN.md"], check=True)
-subprocess.run(["git", "commit", "-m", "chore: join link", "--no-verify"], check=True)
-subprocess.run(["git", "push", "-f", "origin", "join-link", "--no-verify"], check=True)
-subprocess.run(["git", "checkout", "main"], check=True)
+subprocess.run(["git", "checkout", "-B", "join-link"], check=False)
+subprocess.run(["git", "add", "-f", "JOIN.md"], check=False)
+subprocess.run(["git", "commit", "-m", "chore: join link", "--no-verify"], check=False)
+subprocess.run(["git", "push", "-f", "origin", "join-link", "--no-verify"], check=False)
+subprocess.run(["git", "checkout", "main"], check=False)
 print("")
 print("=========================================")
 print(" OPEN THIS PAGE ON YOUR PHONE AND TAP:")
