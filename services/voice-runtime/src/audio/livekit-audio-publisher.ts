@@ -15,6 +15,7 @@ export class LiveKitAudioPublisher {
   private published = false;
   private publication: LocalTrackPublication | null = null;
   private leftover: Buffer = Buffer.alloc(0);
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly room: Room,
@@ -35,7 +36,17 @@ export class LiveKitAudioPublisher {
     this.published = true;
   }
 
-  async push(pcmBuffer: Buffer): Promise<void> {
+  push(pcmBuffer: Buffer): Promise<void> {
+    this.writeQueue = this.writeQueue.then(() => this.pushInternal(pcmBuffer));
+    return this.writeQueue;
+  }
+
+  flush(): Promise<void> {
+    this.writeQueue = this.writeQueue.then(() => this.flushInternal());
+    return this.writeQueue;
+  }
+
+  private async pushInternal(pcmBuffer: Buffer): Promise<void> {
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
     const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
 
@@ -52,7 +63,7 @@ export class LiveKitAudioPublisher {
     this.leftover = combined.subarray(offset);
   }
 
-  async flush(): Promise<void> {
+  private async flushInternal(): Promise<void> {
     if (this.leftover.length === 0) return;
 
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
