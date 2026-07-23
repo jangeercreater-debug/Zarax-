@@ -46,3 +46,4 @@ packages/database/prisma/migrations/dev/
 # Misc
 *.pem
 .vercel
+JOIN.md
