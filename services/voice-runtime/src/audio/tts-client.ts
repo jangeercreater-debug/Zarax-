@@ -1,4 +1,4 @@
-import WebSocket from 'ws';
+import WebSocket, { type RawData } from 'ws';
 
 type AudioHandler = (chunk: Buffer) => void;
 type DoneHandler = () => void;
@@ -21,11 +21,11 @@ export class TtsClient {
 
   constructor(private readonly options: TtsClientOptions) {}
 
-  onAudio(handler) { this.audioHandlers.push(handler); }
-  onDone(handler) { this.doneHandlers.push(handler); }
-  onError(handler) { this.errorHandlers.push(handler); }
+  onAudio(handler: AudioHandler): void { this.audioHandlers.push(handler); }
+  onDone(handler: DoneHandler): void { this.doneHandlers.push(handler); }
+  onError(handler: ErrorHandler): void { this.errorHandlers.push(handler); }
 
-  connect() {
+  connect(): void {
     const wsBase = this.options.ttsServiceUrl.replace(/^http/, 'ws').replace(/^https/, 'wss');
     const url = new URL('/synthesis', wsBase);
     url.searchParams.set('token', this.options.internalToken);
@@ -37,23 +37,28 @@ export class TtsClient {
       if (this.pendingText !== null) this.sendControlFrame(this.pendingText);
     });
 
-    this.ws.on('message', (data) => {
+    this.ws.on('message', (data: RawData, isBinary: boolean) => {
       if (this.cancelled) return;
-      if (typeof data === 'string') {
-        try {
-          const msg = JSON.parse(data);
-          if (msg.type === 'error') {
-            this.errorHandlers.forEach((h) => h(new Error(msg.message || 'tts-service reported a synthesis error')));
-          }
-        } catch (e) {}
-      } else {
-        this.audioHandlers.forEach((h) => h(data));
+
+      if (isBinary) {
+        const chunk = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+        this.audioHandlers.forEach((h) => h(chunk));
+        return;
+      }
+
+      try {
+        const msg = JSON.parse(data.toString()) as { type?: string; message?: string };
+        if (msg.type === 'error') {
+          this.errorHandlers.forEach((h) => h(new Error(msg.message || 'tts-service reported a synthesis error')));
+        }
+      } catch (e) {
+        /* ignore malformed/unexpected text frames */
       }
     });
 
-    this.ws.on('error', (error) => this.errorHandlers.forEach((h) => h(error)));
+    this.ws.on('error', (error: Error) => this.errorHandlers.forEach((h) => h(error)));
 
-    this.ws.on('close', (code, reason) => {
+    this.ws.on('close', (code: number, reason: Buffer) => {
       if (this.cancelled) return;
       if (code === 1000) {
         this.doneHandlers.forEach((h) => h());
@@ -64,7 +69,7 @@ export class TtsClient {
     });
   }
 
-  synthesize(text) {
+  synthesize(text: string): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.sendControlFrame(text);
     } else {
@@ -72,12 +77,14 @@ export class TtsClient {
     }
   }
 
-  sendControlFrame(text) {
-    if (this.ws) this.ws.send(JSON.stringify({ text: text, voiceId: this.options.voiceId }));
+  private sendControlFrame(text: string): void {
+    if (this.ws) {
+      this.ws.send(JSON.stringify({ text: text, voiceId: this.options.voiceId }));
+    }
     this.pendingText = null;
   }
 
-  cancel() {
+  cancel(): void {
     this.cancelled = true;
     if (this.ws) this.ws.close();
     this.ws = null;
