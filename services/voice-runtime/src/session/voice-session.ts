@@ -243,8 +243,13 @@ export class VoiceSession {
     });
     this.currentTts = tts;
 
+    let chunkCount = 0;
+    let byteCount = 0;
+
     await new Promise<void>((resolve) => {
       tts.onAudio(async (chunk: Buffer) => {
+        chunkCount += 1;
+        byteCount += chunk.length;
         if (this.state === 'speaking' && this.currentTts === tts) {
           await this.publisher.push(chunk).catch((error: Error) => {
             this.opts.logger.error('VoiceSession: audio push failed', {
@@ -255,6 +260,7 @@ export class VoiceSession {
         }
       });
       tts.onDone(() => {
+        this.opts.logger.log('VoiceSession: speak done', { callId: this.opts.callId, chunkCount, byteCount });
         if (this.currentTts === tts) this.currentTts = null;
         void this.publisher.flush().catch((error: Error) => {
           this.opts.logger.error('VoiceSession: audio flush failed', {
