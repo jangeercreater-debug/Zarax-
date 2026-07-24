@@ -111,7 +111,15 @@ export class CartesiaStreamSession extends EventEmitter {
         return;
       }
       if (message.data) {
-        this.emit('audio', Buffer.from(message.data, 'base64'));
+        const buf = Buffer.from(message.data, 'base64');
+        let sumAbs = 0;
+        const sampleCount = Math.min(Math.floor(buf.length / 2), 100);
+        for (let i = 0; i < sampleCount; i++) {
+          sumAbs += Math.abs(buf.readInt16LE(i * 2));
+        }
+        const avgAbs = sampleCount > 0 ? (sumAbs / sampleCount).toFixed(1) : 'n/a';
+        console.log('CARTESIA_AUDIO_DEBUG bytes=' + buf.length + ' avgAbsAmplitude=' + avgAbs + ' first8Hex=' + buf.subarray(0, 8).toString('hex'));
+        this.emit('audio', buf);
       }
       if (message.type === 'done') {
         this.emit('done');
