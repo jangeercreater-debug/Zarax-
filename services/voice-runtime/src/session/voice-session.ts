@@ -237,7 +237,7 @@ export class VoiceSession {
     if (this.room.remoteParticipants.size > 0) return;
     await new Promise<void>((resolve) => {
       let settled = false;
-      const timer = setTimeout(() => finish(), 30000);
+      const timer = setTimeout(() => finish(), 120000);
       const finish = (): void => {
         if (settled) return;
         settled = true;
