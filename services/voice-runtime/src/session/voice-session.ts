@@ -69,6 +69,8 @@ export class VoiceSession {
 
     this.setupStt();
 
+    await this.waitForCallerToJoin();
+
     this.opts.logger.log('VoiceSession: welcome check', {
       callId: this.opts.callId,
       hasWelcome: Boolean(this.opts.agentConfig.welcomeMessage),
@@ -229,6 +231,23 @@ export class VoiceSession {
 
     await this.speak(result.response);
     this.startListening();
+  }
+
+  private async waitForCallerToJoin(): Promise<void> {
+    if (this.room.remoteParticipants.size > 0) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => finish(), 30000);
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        this.room.off(RoomEvent.ParticipantConnected, onConnected);
+        clearTimeout(timer);
+        resolve();
+      };
+      const onConnected = (): void => finish();
+      this.room.on(RoomEvent.ParticipantConnected, onConnected);
+    });
   }
 
   private async speak(text: string): Promise<void> {
