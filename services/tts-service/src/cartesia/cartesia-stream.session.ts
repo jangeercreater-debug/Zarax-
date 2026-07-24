@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 
 const CARTESIA_WS_ENDPOINT = 'wss://api.cartesia.ai/tts/websocket';
 const DEFAULT_MODEL_ID = 'sonic-2';
-const DEFAULT_SAMPLE_RATE = 24000;
+const DEFAULT_SAMPLE_RATE = 48000;
 
 export interface CartesiaStreamOptions {
   apiKey: string;

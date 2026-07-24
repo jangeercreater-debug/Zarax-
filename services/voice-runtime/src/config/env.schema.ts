@@ -36,7 +36,7 @@ export const voiceRuntimeEnvSchema = baseEnvSchema
       API_INTERNAL_SERVICE_TOKEN: z.string().min(32),
 
       // Audio settings
-      AUDIO_SAMPLE_RATE: z.coerce.number().default(24000), // must match tts-service's Cartesia output sample rate
+      AUDIO_SAMPLE_RATE: z.coerce.number().default(48000), // must match tts-service's Cartesia output sample rate
       AUDIO_CHANNELS: z.coerce.number().default(1),
       // How many ms of silence before finalizing the current utterance (supplement
       // to Deepgram's own VAD, which may not always fire utterance_end perfectly).
