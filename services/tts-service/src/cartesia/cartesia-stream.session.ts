@@ -96,7 +96,6 @@ export class CartesiaStreamSession extends EventEmitter {
 
     return new CartesiaStreamSession(ws);
   }
-
   private wireEvents(): void {
     this.ws.on('message', (raw) => {
       let message: CartesiaWsMessage;
@@ -110,17 +109,11 @@ export class CartesiaStreamSession extends EventEmitter {
         this.emit('error', new ExternalServiceError('Cartesia', message.error));
         return;
       }
+
       if (message.data) {
-        const buf = Buffer.from(message.data, 'base64');
-        let sumAbs = 0;
-        const sampleCount = Math.min(Math.floor(buf.length / 2), 100);
-        for (let i = 0; i < sampleCount; i++) {
-          sumAbs += Math.abs(buf.readInt16LE(i * 2));
-        }
-        const avgAbs = sampleCount > 0 ? (sumAbs / sampleCount).toFixed(1) : 'n/a';
-        console.log('CARTESIA_AUDIO_DEBUG bytes=' + buf.length + ' avgAbsAmplitude=' + avgAbs + ' first8Hex=' + buf.subarray(0, 8).toString('hex'));
-        this.emit('audio', buf);
+        this.emit('audio', Buffer.from(message.data, 'base64'));
       }
+
       if (message.type === 'done') {
         this.emit('done');
         this.ws.close();
