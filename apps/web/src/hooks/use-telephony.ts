@@ -48,3 +48,39 @@ export function useActiveCalls() {
     refetchInterval: 5000, // poll every 5s while page is open
   });
 }
+
+export interface CallFilters {
+  search?: string;
+  agentId?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedCalls {
+  items: CallRecord[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
+export function useCallsFiltered(filters: CallFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.search) params.set("search", filters.search);
+  if (filters.agentId) params.set("agentId", filters.agentId);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.from) params.set("from", filters.from);
+  if (filters.to) params.set("to", filters.to);
+  if (filters.page) params.set("page", String(filters.page));
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return useQuery({
+    queryKey: [...callsKey, "filtered", filters],
+    queryFn: () =>
+      qs
+        ? clientRequest<PaginatedCalls>("/telephony/calls?" + qs)
+        : clientRequest<{ items: CallRecord[]; total: number; page: number; totalPages: number }>("/telephony/calls"),
+  });
+}
