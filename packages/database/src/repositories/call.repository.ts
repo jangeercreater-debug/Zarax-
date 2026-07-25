@@ -65,6 +65,53 @@ export class CallRepository {
     return rows.map(this.toRecord);
   }
 
+
+  async listFiltered(params: {
+    tenantId: string;
+    search?: string;
+    agentId?: string;
+    status?: 'active' | 'completed';
+    from?: string;
+    to?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{ items: CallRecord[]; total: number; page: number; totalPages: number }> {
+    const page = params.page ?? 1;
+    const limit = Math.min(params.limit ?? 20, 100);
+    const skip = (page - 1) * limit;
+
+    const where: Record<string, unknown> = { tenantId: params.tenantId };
+    if (params.agentId) where.agentId = params.agentId;
+    if (params.status === 'active') where.endedAt = null;
+    if (params.status === 'completed') where.endedAt = { not: null };
+    if (params.from || params.to) {
+      where.startedAt = {
+        ...(params.from ? { gte: new Date(params.from) } : {}),
+        ...(params.to ? { lte: new Date(params.to) } : {}),
+      };
+    }
+    if (params.search) {
+      where.OR = [
+        { fromNumber: { contains: params.search, mode: 'insensitive' } },
+        { toNumber: { contains: params.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [rows, total] = await Promise.all([
+      this.prisma.call.findMany({ where, orderBy: { startedAt: 'desc' }, take: limit, skip }),
+      this.prisma.call.count({ where }),
+    ]);
+
+    return {
+      items: rows.map(this.toRecord),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+
+  
   async listActive(tenantId: TenantId): Promise<CallRecord[]> {
     const rows = await this.prisma.call.findMany({
       where: { tenantId, endedAt: null },

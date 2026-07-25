@@ -8,6 +8,7 @@ import {
   Inject,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentPrincipal, RequirePermission } from '@zarax/shared-auth';
@@ -63,6 +64,31 @@ export class TelephonyController {
   @Get('calls')
   listCalls(@CurrentPrincipal() principal: Principal) {
     return this.callRepo.listForTenant(principal.tenantId);
+  }
+
+  @RequirePermission(PERMISSIONS.CALLS_READ)
+  @ApiOperation({ summary: 'List call history with filters and pagination.' })
+  @Get('calls/search')
+  listCallsFiltered(
+    @CurrentPrincipal() principal: Principal,
+    @Query('search') search?: string,
+    @Query('agentId') agentId?: string,
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.callRepo.listFiltered({
+      tenantId: principal.tenantId,
+      search,
+      agentId,
+      status: status as 'active' | 'completed' | undefined,
+      from,
+      to,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
