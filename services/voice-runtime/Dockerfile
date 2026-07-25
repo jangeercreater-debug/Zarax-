@@ -4,7 +4,7 @@
 # Alpine (musl libc) therefore cannot load the native binding at runtime, so this
 # service must build and run on a glibc base image (Debian slim) unlike the other
 # Node services in this monorepo which use node:20-alpine.
-FROM node:20-slim AS base
+FROM node:22-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 WORKDIR /app
