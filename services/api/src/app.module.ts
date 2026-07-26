@@ -20,6 +20,7 @@ import { AgentsModule } from './modules/agents/agents.module';
 import { UsersAuthModule } from './modules/auth/auth.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
+import { TeamModule } from './modules/team/team.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
@@ -75,6 +76,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     TenantsModule,
     AgentsModule,
     UsersModule,
+    TeamModule,
     ApiKeysModule,
     StatsModule,
     WorkflowsModule,
