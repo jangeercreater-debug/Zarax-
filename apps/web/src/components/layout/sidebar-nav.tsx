@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield } from "lucide-react";
+import { LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/knowledge-base", label: "Knowledge Base", icon: Library },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/audit-logs", label: "Audit Logs", icon: Shield },
+  { href: "/system-health", label: "System Health", icon: Activity },
 ];
 const BOTTOM_ITEMS = [
   { href: "/api-keys", label: "API Keys", icon: Key },
