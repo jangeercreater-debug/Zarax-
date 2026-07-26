@@ -29,6 +29,9 @@ export async function clientRequest<T>(path: string, init: RequestInit = {}): Pr
     if (response.status === 403) {
       throw new ClientApiError('FORBIDDEN', 'You do not have permission to perform this action.', 403, errorBody?.error.requestId ?? 'unknown');
     }
+    if (response.status === 429) {
+      throw new ClientApiError('RATE_LIMITED', 'Too many requests. Please wait a moment and try again.', 429, 'unknown');
+    }
     throw new ClientApiError(
       errorBody?.error.code ?? 'UNKNOWN_ERROR',
       errorBody?.error.message ?? 'Something went wrong. Please try again.',
