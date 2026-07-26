@@ -111,6 +111,11 @@ export class AgentConfigDto {
   @IsBoolean()
   ragEnabled?: boolean;
 
+  @ApiProperty({ required: false, description: "Enable wake-word mode. Agent starts in standby and activates on hearing Zarax." })
+  @IsOptional()
+  @IsBoolean()
+  wakeWordEnabled?: boolean;
+
   @ApiProperty({ required: false, minimum: 1, maximum: 20 })
   @IsOptional()
   @IsInt()
