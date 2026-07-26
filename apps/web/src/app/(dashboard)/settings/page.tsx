@@ -58,6 +58,7 @@ export default function SettingsPage() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
           <TabsTrigger value="organization">Organization</TabsTrigger>
+          <TabsTrigger value="permissions">Permissions</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-4">
@@ -135,6 +136,31 @@ export default function SettingsPage() {
               ) : (
                 <p className="text-sm text-muted-foreground py-6 text-center">No active sessions found.</p>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="permissions" className="space-y-4">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Role Permissions</CardTitle><CardDescription>What each role can do in your workspace.</CardDescription></CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[
+                  { role: "OWNER", color: "bg-purple-100 text-purple-700", perms: ["Full access to everything", "Manage billing", "Delete workspace", "Manage members"] },
+                  { role: "ADMIN", color: "bg-blue-100 text-blue-700", perms: ["Manage agents, workflows, telephony", "View & manage calls", "Manage team members", "Manage API keys"] },
+                  { role: "MEMBER", color: "bg-green-100 text-green-700", perms: ["Create & manage calls", "View agents & workflows", "Execute workflows", "Manage knowledge base"] },
+                  { role: "VIEWER", color: "bg-gray-100 text-gray-700", perms: ["Read-only access to agents", "View call history", "View workflows"] },
+                ].map(({ role, color, perms }) => (
+                  <div key={role} className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + color}>{role}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {perms.map(p => <li key={p} className="text-sm text-muted-foreground flex items-center gap-2"><span className="text-green-500">✓</span>{p}</li>)}
+                    </ul>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

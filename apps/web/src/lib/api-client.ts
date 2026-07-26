@@ -22,6 +22,13 @@ export async function clientRequest<T>(path: string, init: RequestInit = {}): Pr
 
   if (!response.ok) {
     const errorBody = parsedBody as ApiErrorBody | null;
+    if (response.status === 401) {
+      window.location.href = '/login';
+      throw new ClientApiError('UNAUTHORIZED', 'Session expired. Please log in again.', 401, 'unknown');
+    }
+    if (response.status === 403) {
+      throw new ClientApiError('FORBIDDEN', 'You do not have permission to perform this action.', 403, errorBody?.error.requestId ?? 'unknown');
+    }
     throw new ClientApiError(
       errorBody?.error.code ?? 'UNKNOWN_ERROR',
       errorBody?.error.message ?? 'Something went wrong. Please try again.',
