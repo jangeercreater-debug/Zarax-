@@ -18,7 +18,16 @@ import { LiveKitAudioPublisher } from '../audio/livekit-audio-publisher';
 // "Default voice" option stores no voiceId, and Cartesia requires a concrete id.
 const DEFAULT_VOICE_ID = 'a0e99841-438c-4a64-b679-ae501e7d6091';
 
-type SessionState = 'connecting' | 'listening' | 'transcribing' | 'generating' | 'speaking' | 'ended';
+type SessionState = 'connecting' | 'standby' | 'listening' | 'transcribing' | 'generating' | 'speaking' | 'ended';
+
+function isWakeWord(text: string): boolean {
+  return /\bzarax\b/i.test(text);
+}
+
+function isStandbyPhrase(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return t.includes('stop for now') || t.includes('go to sleep') || t === 'stop' || t.startsWith('stop, ') || t.startsWith('stop.');
+}
 
 export interface VoiceSessionOptions {
   callId: string;
@@ -49,6 +58,7 @@ export class VoiceSession {
   private interimText = '';
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private turnCount = 0;
+  private wakeWordEnabled = false;
   readonly startedAt = Date.now();
 
   constructor(private readonly opts: VoiceSessionOptions) {}
@@ -161,7 +171,7 @@ export class VoiceSession {
       void (async () => {
         for await (const frame of audioStream as AsyncIterable<AudioFrame>) {
           if (this.state === 'ended') break;
-          if (this.state === 'listening' || this.state === 'transcribing') {
+          if (this.state === 'listening' || this.state === 'transcribing' || this.state === 'standby') {
             const pcm = Buffer.from(frame.data.buffer);
             this.sttClient.sendAudio(pcm);
           }
@@ -196,6 +206,32 @@ export class VoiceSession {
 
   private async handleFinalTranscript(text: string): Promise<void> {
     if (this.state === 'ended') return;
+
+    if (this.wakeWordEnabled) {
+      if (this.state === 'standby') {
+        if (isWakeWord(text)) {
+          this.opts.logger.log('VoiceSession: wake word detected', { callId: this.opts.callId, text });
+          await this.speak("Hi, I'm listening.");
+          this.startListening();
+        } else {
+          this.state = 'standby';
+        }
+        return;
+      }
+
+      if (isStandbyPhrase(text)) {
+        this.opts.logger.log('VoiceSession: standby phrase detected', { callId: this.opts.callId, text });
+        this.currentTts?.cancel();
+        this.currentTts = null;
+        await this.speak("Okay, I'll stop for now. Say Zarax whenever you need me.");
+        this.state = 'standby';
+        return;
+      }
+
+      const cleaned = text.replace(/^zarax[,.]?\s*/i, '').trim();
+      if (cleaned.length > 0) return this.handleFinalTranscript(cleaned);
+    }
+
     this.state = 'generating';
     this.turnCount++;
 
