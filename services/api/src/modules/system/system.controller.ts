@@ -86,4 +86,39 @@ export class SystemController {
       checkedAt: new Date().toISOString(),
     };
   }
+  @RequirePermission(PERMISSIONS.TENANT_MANAGE_BILLING)
+  @ApiOperation({ summary: "Performance metrics - last 24h call stats." })
+  @Get("performance")
+  async systemPerformance(@CurrentPrincipal() _principal: Principal) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [totalCalls, avgDuration, errorCalls] = await Promise.all([
+      this.prisma.call.count({ where: { tenantId: _principal.tenantId, startedAt: { gte: since } } }),
+      this.prisma.call.aggregate({
+        where: { tenantId: _principal.tenantId, startedAt: { gte: since }, durationMs: { not: null } },
+        _avg: { durationMs: true },
+        _max: { durationMs: true },
+        _min: { durationMs: true },
+      }),
+      this.prisma.call.count({ where: { tenantId: _principal.tenantId, startedAt: { gte: since }, endReason: { in: ["error", "failed"] } } }),
+    ]);
+
+    const successCalls = totalCalls - errorCalls;
+    const successRate = totalCalls > 0 ? Math.round((successCalls / totalCalls) * 100) : 100;
+
+    return {
+      period: "last_24h",
+      checkedAt: new Date().toISOString(),
+      calls: {
+        total: totalCalls,
+        successful: successCalls,
+        errors: errorCalls,
+        successRatePct: successRate,
+        avgDurationMs: Math.round(avgDuration._avg.durationMs ?? 0),
+        maxDurationMs: avgDuration._max.durationMs ?? 0,
+        minDurationMs: avgDuration._min.durationMs ?? 0,
+      },
+    };
+  }
+
 }
