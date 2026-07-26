@@ -8,6 +8,7 @@ setupTracing({
 
 /* eslint-disable import/order -- these imports must follow the tracing setup above */
 import 'reflect-metadata';
+import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -42,7 +43,25 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  app.enableCors({ origin: true, credentials: true });
+  // Helmet — security headers (CSP disabled to avoid conflicts with API clients)
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+  // CORS — strict allowlist, never open to all origins
+  const allowedOrigins = [
+    process.env.DASHBOARD_URL,
+    'https://zarax1.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3100',
+  ].filter((u): u is string => Boolean(u));
+  app.enableCors({
+    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || allowedOrigins.some((u) => origin.startsWith(u))) cb(null, true);
+      else cb(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id'],
+  });
 
   // Production standards (see docs/production-standards.md): every route defaults to
   // /v1/... (health/metrics stay unversioned); OpenAPI docs auto-generate from the
