@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge } from "lucide-react";
+import { Mic2, LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/zarax", label: "Zarax", icon: Mic2 },
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/conversations", label: "Conversations", icon: MessageSquare },
   { href: "/workflows", label: "Workflows", icon: Workflow },
