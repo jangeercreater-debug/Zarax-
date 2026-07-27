@@ -76,22 +76,31 @@ export class VoiceSession {
     this.opts.logger.log('VoiceSession: publishing track', { callId: this.opts.callId });
     await this.publisher.start();
     this.opts.logger.log('VoiceSession: track published', { callId: this.opts.callId });
-
     this.setupStt();
+
+    // ZCI Phase B: Wake-word mode
+    this.wakeWordEnabled = Boolean((this.opts.agentConfig as Record<string,unknown>).wakeWordEnabled);
+
+    if (this.wakeWordEnabled) {
+      this.state = "standby";
+      this.opts.logger.log("VoiceSession: wake-word mode - starting in standby", { callId: this.opts.callId });
+      // STT must run even in standby so wake word can be detected
+      this.subscribeToCallerAudio();
+      return;
+    }
 
     await this.waitForCallerToJoin();
 
-    this.opts.logger.log('VoiceSession: welcome check', {
+    this.opts.logger.log("VoiceSession: welcome check", {
       callId: this.opts.callId,
       hasWelcome: Boolean(this.opts.agentConfig.welcomeMessage),
     });
     if (this.opts.agentConfig.welcomeMessage) {
       await this.speak(this.opts.agentConfig.welcomeMessage);
-      this.opts.logger.log('VoiceSession: welcome done', { callId: this.opts.callId });
+      this.opts.logger.log("VoiceSession: welcome done", { callId: this.opts.callId });
     }
 
     this.startListening();
-    this.subscribeToCallerAudio();
   }
 
   private async mintAgentToken(): Promise<string> {
