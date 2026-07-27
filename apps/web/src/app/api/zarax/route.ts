@@ -9,25 +9,21 @@ interface RoomToken {
 }
 
 const ZARAX_AGENT_ID = "bf25552c-2814-4cc6-a098-67100fbe3ef5";
-const VOICE_GATEWAY_URL = process.env.VOICE_GATEWAY_URL ?? "https://zaraxvoice-gateway-production.up.railway.app";
-const INTERNAL_TOKEN = process.env.API_INTERNAL_SERVICE_TOKEN ?? "";
+const GW = process.env.VOICE_GATEWAY_URL ?? "https://zaraxvoice-gateway-production.up.railway.app";
+const TOK = process.env.API_INTERNAL_SERVICE_TOKEN ?? "";
 
 export async function POST(): Promise<NextResponse> {
   try {
-    const res = await fetch(VOICE_GATEWAY_URL + "/v1/rooms/token", {
+    const res = await fetch(GW + "/v1/rooms/token", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + INTERNAL_TOKEN,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + TOK },
       body: JSON.stringify({ agentId: ZARAX_AGENT_ID }),
       cache: "no-store",
     });
-      const err = await res.text();
-      return NextResponse.json({ error: err }, { status: res.status });
-    }
-    const json = await res.json() as { data: RoomToken };
-    return NextResponse.json({ data: json.data ?? json });
+    if (!res.ok) return NextResponse.json({ error: "Gateway error" }, { status: res.status });
+    const json = await res.json() as Record<string, unknown>;
+    const data = (json.data ?? json) as RoomToken;
+    return NextResponse.json({ data });
   } catch (error) {
     return handleRouteError(error);
   }
