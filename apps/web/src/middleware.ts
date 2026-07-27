@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
 const PUBLIC_PATHS = [
+  '/zarax',
   '/login',
   '/signup',
   '/forgot-password',
   '/reset-password',
   '/verify-email',
+  '/zarax',
 ];
 
 export function middleware(request: NextRequest): NextResponse {
