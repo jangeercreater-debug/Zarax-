@@ -29,6 +29,7 @@ export interface AgentConfig {
   sttModel?: string;
   enabledTools?: string[];
   ragEnabled?: boolean;
+  wakeWordEnabled?: boolean;
   maxToolIterations?: number;
   webhooks?: Record<string, string>;
 }

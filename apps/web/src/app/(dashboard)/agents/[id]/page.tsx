@@ -72,6 +72,7 @@ export default function EditAgentPage() {
           voiceId: values.voiceId || undefined,
           sttModel: values.sttModel || undefined,
           ragEnabled: values.ragEnabled,
+          wakeWordEnabled: values.wakeWordEnabled,
           maxToolIterations: values.maxToolIterations,
           enabledTools: values.enabledTools,
         },

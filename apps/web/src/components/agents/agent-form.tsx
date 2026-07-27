@@ -62,6 +62,7 @@ export const agentFormSchema = z.object({
   voiceId: z.string().optional(),
   sttModel: z.string().optional(),
   ragEnabled: z.boolean().optional(),
+  wakeWordEnabled: z.boolean().optional(),
   maxToolIterations: z.coerce.number().int().min(1).max(20).optional(),
   enabledTools: z.array(z.string()).optional(),
 });
@@ -83,6 +84,7 @@ export function agentToFormValues(agent: Agent): AgentFormValues {
     voiceId: agent.config.voiceId ?? '',
     sttModel: agent.config.sttModel ?? '',
     ragEnabled: agent.config.ragEnabled ?? false,
+      wakeWordEnabled: (agent.config as Record<string,unknown>).wakeWordEnabled === true,
     maxToolIterations: agent.config.maxToolIterations ?? 5,
     enabledTools: agent.config.enabledTools ?? [],
   };
@@ -122,6 +124,7 @@ export function AgentForm({
       voiceId: '',
       sttModel: '',
       ragEnabled: false,
+    wakeWordEnabled: false,
       maxToolIterations: 5,
       enabledTools: [],
     },
@@ -450,6 +453,24 @@ export function AgentForm({
                   </FormItem>
                 )}
               />
+        <FormField
+          control={form.control}
+          name="wakeWordEnabled"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label>Wake Word Mode</Label>
+                <FormDescription>
+                  Agent starts silent. Say Zarax to wake up, Stop for now to pause.
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch checked={field.value} onCheckedChange={field.onChange} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
 
               <FormField
                 control={form.control}
