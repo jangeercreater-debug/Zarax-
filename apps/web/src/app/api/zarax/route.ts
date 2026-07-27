@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/route-handler";
-import { backendRequest } from "@/lib/server-api-client";
+import { getAccessToken } from "@/lib/auth-cookies";
 
 interface RoomToken {
   callId: string;
@@ -14,12 +14,25 @@ const GW = process.env.VOICE_GATEWAY_URL ?? "https://zaraxvoice-gateway-producti
 
 export async function POST(): Promise<NextResponse> {
   try {
-    // Use backendRequest with voice-gateway URL - this forwards the user JWT cookie automatically
-    const data = await backendRequest<RoomToken>(
-      "/rooms/token",
-      { method: "POST", body: JSON.stringify({ agentId: ZARAX_AGENT_ID }) },
-      GW,
-    );
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+    const res = await fetch(GW + "/rooms/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + accessToken,
+      },
+      body: JSON.stringify({ agentId: ZARAX_AGENT_ID }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return NextResponse.json({ error: txt }, { status: res.status });
+    }
+    const json = await res.json() as Record<string, unknown>;
+    const data = (json.data ?? json) as RoomToken;
     return NextResponse.json({ data });
   } catch (error) {
     return handleRouteError(error);

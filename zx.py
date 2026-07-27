@@ -49,6 +49,7 @@ published = None
 for a in items if isinstance(items, list) else []:
     print("  ", a.get("id"), "|", a.get("name"), "| active =", a.get("isActive"))
     if a.get("isActive") and not published:
+            if a.get("id") == "bf25552c-2814-4cc6-a098-67100fbe3ef5": published = a.get("id"); break
         published = a.get("id")
 if not published:
     print("!! no published agent"); sys.exit()
