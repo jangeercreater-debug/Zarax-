@@ -50,6 +50,7 @@ async function bootstrap(): Promise<void> {
   const allowedOrigins = [
     process.env.DASHBOARD_URL,
     'https://zarax1.vercel.app',
+    'https://zaraxweb-production.up.railway.app',
     'http://localhost:3000',
     'http://localhost:3100',
   ].filter((u): u is string => Boolean(u));
