@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Mic, MicOff, Loader2 } from "lucide-react";
-import { clientRequest } from "@/lib/api-client";
+// No clientRequest - direct fetch to avoid auth redirect on Zarax page
 
 type ZaraxState = "idle" | "connecting" | "standby" | "listening" | "speaking" | "error";
 
@@ -55,7 +55,10 @@ export default function ZaraxPage() {
 
       const { Room, RoomEvent, Track } = await import("livekit-client");
 
-      const token = await clientRequest<RoomToken>("/zarax", { method: "POST" });
+      const res = await fetch("/api/zarax", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include" });
+      if (!res.ok) throw new Error("Could not start Zarax session");
+      const json = await res.json() as { data: RoomToken };
+      const token = json.data;
       sessionRef.current = { callId: token.callId };
 
       const room = new Room({ adaptiveStream: true, dynacast: true });
