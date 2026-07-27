@@ -14,7 +14,7 @@ const TOK = process.env.API_INTERNAL_SERVICE_TOKEN ?? "";
 
 export async function POST(): Promise<NextResponse> {
   try {
-    const res = await fetch(GW + "/v1/rooms/token", {
+    const res = await fetch(GW + "/rooms/token", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + TOK },
       body: JSON.stringify({ agentId: ZARAX_AGENT_ID }),
