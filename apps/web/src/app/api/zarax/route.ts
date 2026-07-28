@@ -9,7 +9,7 @@ interface RoomToken {
   token: string;
 }
 
-const ZARAX_AGENT_ID = "bf25552c-2814-4cc6-a098-67100fbe3ef5";
+const ZARAX_AGENT_ID = "bf25552c-2814-4cc6-a098-b7100fbe3ef5";
 const GW = process.env.VOICE_GATEWAY_URL ?? "https://zaraxvoice-gateway-production.up.railway.app";
 
 export async function POST(): Promise<NextResponse> {
