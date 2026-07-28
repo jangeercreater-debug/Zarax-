@@ -85,6 +85,7 @@ export class VoiceSession {
       this.state = "standby";
       this.opts.logger.log("VoiceSession: wake-word mode - starting in standby", { callId: this.opts.callId });
       // STT must run even in standby so wake word can be detected
+      await this.waitForCallerToJoin();
       this.subscribeToCallerAudio();
       return;
     }
