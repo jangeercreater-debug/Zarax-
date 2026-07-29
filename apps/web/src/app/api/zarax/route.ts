@@ -11,13 +11,12 @@ interface RoomToken {
 
 const ZARAX_AGENT_ID = "bf25552c-2814-4cc6-a098-b7100fbe3ef5";
 const GW = process.env.VOICE_GATEWAY_URL ?? "https://zaraxvoice-gateway-production.up.railway.app";
+const INTERNAL_TOKEN = process.env.API_INTERNAL_SERVICE_TOKEN ?? "";
 
 export async function POST(): Promise<NextResponse> {
   try {
-    const accessToken = getAccessToken();
-    if (!accessToken) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    // Try user JWT first, fall back to internal token
+    const accessToken = getAccessToken() ?? INTERNAL_TOKEN;
     const res = await fetch(GW + "/rooms/token", {
       method: "POST",
       headers: {
