@@ -1,0 +1,7 @@
+# ZaraX Voice Call
+
+## [TAP HERE TO JOIN THE CALL](https://meet.livekit.io/custom?liveKitUrl=wss%3A%2F%2Fzarax-production-6mi1twtn.livekit.cloud&token=eyJhbGciOiJIUzI1NiJ9.eyJ2aWRlbyI6eyJyb29tSm9pbiI6dHJ1ZSwicm9vbSI6InRfOTljMWQ2NWEtMGM1My00YzU1LTg1NTYtOWRkZTU5Y2ZhNmVmX2FfYmYyNTU1MmMtMjgxNC00Y2M2LWEwOTgtYjcxMDBmYmUzZWY1X2NfNjNmMTI1YjgtMTlkNC00NGUxLWJiMmUtZDNhZWQ3MDJiZDExIiwiY2FuUHVibGlzaCI6dHJ1ZSwiY2FuU3Vic2NyaWJlIjp0cnVlfSwiaXNzIjoiQVBJNXh0S0tMa1JEd2NLIiwiZXhwIjoxNzg1MzA4MzgxLCJuYmYiOjE3ODUzMDQ3ODEsInN1YiI6ImNhbGxlci02M2YxMjViOC0xOWQ0LTQ0ZTEtYmIyZS1kM2FlZDcwMmJkMTEifQ.0CUNikFlWVjaW_KgEjstwpBJCs0axmXmP7cnWmQRQl0)
+
+Room: `t_99c1d65a-0c53-4c55-8556-9dde59cfa6ef_a_bf25552c-2814-4cc6-a098-b7100fbe3ef5_c_63f125b8-19d4-44e1-bb2e-d3aed702bd11`
+
+Token expires in 15 minutes.
