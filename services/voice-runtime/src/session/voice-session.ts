@@ -78,7 +78,6 @@ export class VoiceSession {
 
     // Use OpenAI Realtime if API key available
     if (this.opts.openAiApiKey) {
-      this.useRealtime = true;
       await this.startRealtimeSession();
       return;
     }
