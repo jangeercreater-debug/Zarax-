@@ -8,6 +8,7 @@ import type { TenantId } from '@zarax/shared-types';
 import { ConversationStateService } from '../conversation-state/conversation-state.service';
 import { RagClient } from '../rag-client/rag-client';
 import { MemoryClient } from '../memory-client/memory-client';
+import { DecisionEngine } from '../intelligence/decision-engine';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
 import { ZARAX_SYSTEM_PROMPT, ZARAX_CONFIG } from './zarax-personality';
@@ -50,6 +51,7 @@ export class ConversationOrchestratorService {
     private readonly toolBroker: ToolCallBroker,
     private readonly ragClient: RagClient,
     private readonly memoryClient: MemoryClient,
+    private readonly decisionEngine: DecisionEngine,
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
@@ -66,16 +68,25 @@ export class ConversationOrchestratorService {
     const agent = await this.agentRepository.findByIdForTenantOrThrow(tenantId, agentId);
     const runtimeConfig = resolveAgentRuntimeConfig(agent.config);
 
+    // Intelligence: Detect intent and plan response
+    const decision = this.decisionEngine.decide(userText);
+    this.logger.log('Intelligence: decision', {
+      callId,
+      intent: decision.intent,
+      confidence: decision.confidence,
+      strategy: decision.reasoning.strategy,
+    });
+
     // Auto-detect Zarax agent and inject personality
     const isZarax = agent.name?.toLowerCase() === 'zarax';
     const effectiveSystemPrompt = isZarax
       ? ZARAX_SYSTEM_PROMPT
       : runtimeConfig.systemPrompt;
     const effectiveMaxTokens = isZarax
-      ? ZARAX_CONFIG.maxTokens
+      ? decision.reasoning.maxTokens
       : runtimeConfig.maxTokens;
     const effectiveTemperature = isZarax
-      ? ZARAX_CONFIG.temperature
+      ? decision.reasoning.temperature
       : runtimeConfig.temperature;
 
     const provider = runtimeConfig.provider ?? AGENT_RUNTIME_CONFIG_DEFAULTS.provider;
@@ -97,21 +108,30 @@ export class ConversationOrchestratorService {
       history = await this.augmentWithRagContext(tenantId, history, userText);
     }
 
-    // Memory retrieval - inject relevant memories into context
-    try {
-      const memories = await this.memoryClient.recall(tenantId, '', userText);
-      if (memories.length > 0) {
-        const memoryContext = memories
-          .map((m) => `[${m.category}] ${m.key ? m.key + ': ' : ''}${JSON.stringify(m.value)}`)
-          .join('\n');
-        history = [...history, { role: 'system', content: `User memories:\n${memoryContext}` }];
+    // Memory retrieval - search when decision says so
+    if (decision.shouldSearchMemory) {
+      try {
+        const memories = await this.memoryClient.recall(tenantId, '', userText);
+        if (memories.length > 0) {
+          const memoryContext = memories
+            .map((m) => `[${m.category}] ${m.key ? m.key + ': ' : ''}${JSON.stringify(m.value)}`)
+            .join('\n');
+          history = [...history, { role: 'system', content: `User memories:\n${memoryContext}` }];
+        }
+      } catch {
+        // Memory is enhancement, not critical
       }
-    } catch {
-      // Memory is enhancement, not critical
+    }
+
+    // Inject reasoning hint for Zarax
+    if (isZarax && decision.reasoning.contextHint) {
+      history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}` }];
     }
 
     // Auto-detect "remember this" and store memory
-    void this.detectAndStoreMemory(tenantId, callId, userText).catch(() => undefined);
+    if (decision.shouldStoreMemory) {
+      void this.detectAndStoreMemory(tenantId, callId, userText).catch(() => undefined);
+    }
 
     history = [...history, { role: 'user', content: userText }];
 
