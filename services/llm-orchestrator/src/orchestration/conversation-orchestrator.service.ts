@@ -7,6 +7,7 @@ import type { TenantId } from '@zarax/shared-types';
 
 import { ConversationStateService } from '../conversation-state/conversation-state.service';
 import { RagClient } from '../rag-client/rag-client';
+import { MemoryClient } from '../memory-client/memory-client';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
 import {
@@ -19,10 +20,6 @@ import type { ConversationTurnResponseDto } from './dto/conversation-turn-respon
 const FALLBACK_RESPONSE_TEXT =
   "I'm having trouble completing that request right now — could you try again in a moment?";
 
-/** How `responseStyle` actually takes effect — providers have no first-class
- * "response style" API parameter, so this is folded into the system prompt as a
- * plain-language instruction. Only applied on the first turn (where the system
- * prompt is seeded) — same as the system prompt itself. */
 const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle']>, string> = {
   concise: 'Keep your responses brief and to the point — a sentence or two where possible.',
   balanced: '',
@@ -40,6 +37,7 @@ export class ConversationOrchestratorService {
     private readonly toolCatalog: ToolCatalogClient,
     private readonly toolBroker: ToolCallBroker,
     private readonly ragClient: RagClient,
+    private readonly memoryClient: MemoryClient,
     @Inject(PRISMA_CLIENT) prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
@@ -73,6 +71,19 @@ export class ConversationOrchestratorService {
 
     if (runtimeConfig.ragEnabled ?? AGENT_RUNTIME_CONFIG_DEFAULTS.ragEnabled) {
       history = await this.augmentWithRagContext(tenantId, history, userText);
+    }
+
+    // Memory retrieval - inject relevant memories into context
+    try {
+      const memories = await this.memoryClient.recall(tenantId, '', userText);
+      if (memories.length > 0) {
+        const memoryContext = memories
+          .map((m) => `[${m.category}] ${m.key ? m.key + ': ' : ''}${JSON.stringify(m.value)}`)
+          .join('\n');
+        history = [...history, { role: 'system', content: `User memories:\n${memoryContext}` }];
+      }
+    } catch {
+      // Memory is enhancement, not critical
     }
 
     history = [...history, { role: 'user', content: userText }];
@@ -110,8 +121,6 @@ export class ConversationOrchestratorService {
       const context = results.map((r) => `- ${r.text}`).join('\n');
       return [...history, { role: 'system', content: `Relevant context for this question:\n${context}` }];
     } catch (error) {
-      // RAG is an enhancement, not a hard dependency — a failed lookup degrades to
-      // "answer without extra context" rather than failing the whole turn.
       this.logger.warn('RAG context lookup failed; continuing without it', {
         message: error instanceof Error ? error.message : String(error),
       });
@@ -167,8 +176,6 @@ export class ConversationOrchestratorService {
             maxTokens: params.maxTokens,
           });
 
-      // Cost/usage tracking — see docs/production-standards.md item #4/#5. Recording
-      // must never fail the conversation turn over a metering hiccup.
       this.meteringService
         .recordLlmUsage({
           tenantId: params.tenantId,
