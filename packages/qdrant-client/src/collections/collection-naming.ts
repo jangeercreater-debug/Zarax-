@@ -1,6 +1,6 @@
 import type { TenantId } from '@zarax/shared-types';
 
-export type VectorCollectionPurpose = 'knowledge_base' | 'call_transcripts';
+export type VectorCollectionPurpose = 'knowledge_base' | 'call_transcripts' | 'user_memory';
 
 /**
  * Every tenant's vectors live in their own collection, never a shared collection
