@@ -56,7 +56,6 @@ export class VoiceSession {
   private sttClient!: SttClient;
   private currentTts: TtsClient | null = null;
   private realtimeClient: OpenAiRealtimeClient | null = null;
-  private useRealtime = false;
   private wakeWordEnabled = false;
   private interimText = '';
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
