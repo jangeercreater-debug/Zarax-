@@ -15,10 +15,10 @@ export class MemoryController {
   async store(
     @CurrentPrincipal() principal: Principal,
     @Body() body: { category: string; key?: string; value: unknown; source?: string; callId?: string; importance?: number },
-  ) {
+  ): Promise<Record<string, unknown>> {
     const memory = await this.prisma.userMemory.create({
       data: {
-        userId: principal.userId,
+        userId: principal.id,
         tenantId: principal.tenantId,
         category: body.category,
         key: body.key ?? null,
@@ -28,7 +28,7 @@ export class MemoryController {
         importance: body.importance ?? 1,
       },
     });
-    return memory;
+    return memory as unknown as Record<string, unknown>;
   }
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
@@ -40,7 +40,7 @@ export class MemoryController {
     @Query("limit") limit?: string,
   ): Promise<{ items: Record<string, unknown>[]; total: number }> {
     const where: Record<string, unknown> = {
-      userId: principal.userId,
+      userId: principal.id,
       tenantId: principal.tenantId,
     };
     if (category) where.category = category;
@@ -62,7 +62,7 @@ export class MemoryController {
   ): Promise<{ items: Record<string, unknown>[] }> {
     const items = await this.prisma.userMemory.findMany({
       where: {
-        userId: principal.userId,
+        userId: principal.id,
         tenantId: principal.tenantId,
         OR: [
           { key: { contains: q, mode: "insensitive" } },
@@ -81,9 +81,9 @@ export class MemoryController {
   async remove(
     @CurrentPrincipal() principal: Principal,
     @Param("id") id: string,
-  ) {
+  ): Promise<{ deleted: boolean }> {
     await this.prisma.userMemory.deleteMany({
-      where: { id, userId: principal.userId, tenantId: principal.tenantId },
+      where: { id, userId: principal.id, tenantId: principal.tenantId },
     });
     return { deleted: true };
   }
