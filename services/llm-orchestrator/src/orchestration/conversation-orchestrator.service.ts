@@ -26,6 +26,17 @@ const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle
   detailed: 'Feel free to give thorough, detailed responses that fully address the question.',
 };
 
+const REMEMBER_TRIGGERS = [
+  'remember', 'yaad rakh', 'yaad rakho', 'yaad kar', 'save this',
+  'note this', 'store this', 'save kar', 'note kar', 'likh le',
+  'save karo', 'remember kar', 'memorize', 'dont forget', 'mat bhulna',
+];
+
+const MEMORY_EXTRACT_PROMPT = `Extract the memory from this user message. Respond ONLY with valid JSON:
+{"category": "contact|note|preference|task|fact", "key": "short identifier or null", "value": "the information to remember", "importance": 1-5}
+
+If no memory to extract, respond: {"skip": true}`;
+
 @Injectable()
 export class ConversationOrchestratorService {
   private readonly agentRepository: AgentRepository;
@@ -38,7 +49,7 @@ export class ConversationOrchestratorService {
     private readonly toolBroker: ToolCallBroker,
     private readonly ragClient: RagClient,
     private readonly memoryClient: MemoryClient,
-    @Inject(PRISMA_CLIENT) prisma: PrismaClient,
+    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
     this.agentRepository = new AgentRepository(prisma);
@@ -86,6 +97,9 @@ export class ConversationOrchestratorService {
       // Memory is enhancement, not critical
     }
 
+    // Auto-detect "remember this" and store memory
+    void this.detectAndStoreMemory(tenantId, callId, userText).catch(() => undefined);
+
     history = [...history, { role: 'user', content: userText }];
 
     const tools = await this.resolveEnabledTools(runtimeConfig);
@@ -107,6 +121,47 @@ export class ConversationOrchestratorService {
     await this.conversationState.saveHistory(tenantId, callId, updatedHistory);
 
     return { response: finalText, shouldEndCall, endCallReason };
+  }
+
+  private async detectAndStoreMemory(tenantId: TenantId, callId: string, userText: string): Promise<void> {
+    const lower = userText.toLowerCase();
+    const shouldExtract = REMEMBER_TRIGGERS.some((t) => lower.includes(t));
+    if (!shouldExtract) return;
+
+    try {
+      const provider = this.aiRegistry.get('anthropic');
+      const extraction = await provider.complete({
+        model: 'claude-sonnet-4-5-20241022',
+        messages: [
+          { role: 'system', content: MEMORY_EXTRACT_PROMPT },
+          { role: 'user', content: userText },
+        ],
+        temperature: 0.1,
+        maxTokens: 200,
+      });
+
+      const parsed = JSON.parse(extraction.content) as Record<string, unknown>;
+      if (parsed.skip) return;
+
+      await this.prisma.userMemory.create({
+        data: {
+          userId: '',
+          tenantId,
+          category: String(parsed.category ?? 'note'),
+          key: parsed.key ? String(parsed.key) : null,
+          value: parsed.value as never,
+          source: 'voice',
+          callId,
+          importance: Number(parsed.importance ?? 1),
+        },
+      });
+
+      this.logger.log('Memory auto-stored from voice', { callId, category: parsed.category });
+    } catch (error) {
+      this.logger.warn('Memory extraction failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private async augmentWithRagContext(
