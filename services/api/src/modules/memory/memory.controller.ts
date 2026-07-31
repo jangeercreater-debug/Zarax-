@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, Inject } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
@@ -33,13 +33,42 @@ export class MemoryController {
       },
     });
 
-    // Store in Qdrant for semantic search
     const text = body.key
       ? body.category + ": " + body.key + " = " + JSON.stringify(body.value)
       : body.category + ": " + JSON.stringify(body.value);
     await this.vectorService.storeVector(principal.tenantId, memory.id, text, body.category, body.key ?? null).catch(() => undefined);
 
     return memory as unknown as Record<string, unknown>;
+  }
+
+  @RequirePermission(PERMISSIONS.CALLS_READ)
+  @ApiOperation({ summary: "Update a memory item." })
+  @Patch(":id")
+  async update(
+    @CurrentPrincipal() principal: Principal,
+    @Param("id") id: string,
+    @Body() body: { category?: string; key?: string; value?: unknown; importance?: number },
+  ): Promise<Record<string, unknown>> {
+    const data: Record<string, unknown> = {};
+    if (body.category !== undefined) data.category = body.category;
+    if (body.key !== undefined) data.key = body.key;
+    if (body.value !== undefined) data.value = body.value as never;
+    if (body.importance !== undefined) data.importance = body.importance;
+
+    const memory = await this.prisma.userMemory.updateMany({
+      where: { id, userId: principal.id, tenantId: principal.tenantId },
+      data,
+    });
+
+    if (body.value !== undefined || body.key !== undefined) {
+      const updated = await this.prisma.userMemory.findFirst({ where: { id } });
+      if (updated) {
+        const text = (updated.key ? updated.category + ": " + updated.key + " = " : updated.category + ": ") + JSON.stringify(updated.value);
+        await this.vectorService.storeVector(principal.tenantId, id, text, updated.category, updated.key).catch(() => undefined);
+      }
+    }
+
+    return { updated: memory.count > 0 };
   }
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
@@ -71,7 +100,6 @@ export class MemoryController {
     @CurrentPrincipal() principal: Principal,
     @Query("q") q: string,
   ): Promise<{ items: Record<string, unknown>[] }> {
-    // First try semantic search via Qdrant
     const vectorResults = await this.vectorService.searchVector(principal.tenantId, q, 10).catch(() => []);
 
     if (vectorResults.length > 0) {
@@ -86,7 +114,6 @@ export class MemoryController {
       return { items: items as unknown as Record<string, unknown>[] };
     }
 
-    // Fallback to text search
     const items = await this.prisma.userMemory.findMany({
       where: {
         userId: principal.id,
