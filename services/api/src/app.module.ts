@@ -27,6 +27,7 @@ import { MemoryModule } from './modules/memory/memory.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { InternalModule } from './modules/internal/internal.module';
@@ -78,6 +79,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     AuditLogsModule,
     AnalyticsModule,
     DashboardModule,
+    BillingModule,
     StatsModule,
     WorkflowsModule,
     InternalModule,
