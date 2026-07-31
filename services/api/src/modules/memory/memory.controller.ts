@@ -3,14 +3,18 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
 import { PERMISSIONS, type Principal } from "@zarax/shared-types";
+import { MemoryVectorService } from "./memory-vector.service";
 
 @ApiTags("memory")
 @Controller("memory")
 export class MemoryController {
-  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
+  constructor(
+    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    private readonly vectorService: MemoryVectorService,
+  ) {}
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
-  @ApiOperation({ summary: "Store a memory item." })
+  @ApiOperation({ summary: "Store a memory item with semantic embedding." })
   @Post()
   async store(
     @CurrentPrincipal() principal: Principal,
@@ -28,6 +32,13 @@ export class MemoryController {
         importance: body.importance ?? 1,
       },
     });
+
+    // Store in Qdrant for semantic search
+    const text = body.key
+      ? body.category + ": " + body.key + " = " + JSON.stringify(body.value)
+      : body.category + ": " + JSON.stringify(body.value);
+    await this.vectorService.storeVector(principal.tenantId, memory.id, text, body.category, body.key ?? null).catch(() => undefined);
+
     return memory as unknown as Record<string, unknown>;
   }
 
@@ -54,12 +65,28 @@ export class MemoryController {
   }
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
-  @ApiOperation({ summary: "Search memories by key or value." })
+  @ApiOperation({ summary: "Semantic search memories using AI." })
   @Get("search")
   async search(
     @CurrentPrincipal() principal: Principal,
     @Query("q") q: string,
   ): Promise<{ items: Record<string, unknown>[] }> {
+    // First try semantic search via Qdrant
+    const vectorResults = await this.vectorService.searchVector(principal.tenantId, q, 10).catch(() => []);
+
+    if (vectorResults.length > 0) {
+      const memoryIds = vectorResults.map(r => r.memoryId);
+      const items = await this.prisma.userMemory.findMany({
+        where: {
+          id: { in: memoryIds },
+          userId: principal.id,
+          tenantId: principal.tenantId,
+        },
+      });
+      return { items: items as unknown as Record<string, unknown>[] };
+    }
+
+    // Fallback to text search
     const items = await this.prisma.userMemory.findMany({
       where: {
         userId: principal.id,
@@ -85,6 +112,7 @@ export class MemoryController {
     await this.prisma.userMemory.deleteMany({
       where: { id, userId: principal.id, tenantId: principal.tenantId },
     });
+    await this.vectorService.deleteVector(principal.tenantId, id).catch(() => undefined);
     return { deleted: true };
   }
 }
