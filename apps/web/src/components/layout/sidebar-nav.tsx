@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Mic2, LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge, Building2 } from "lucide-react";
+import { Mic2, LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge, Building2, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
 const BOTTOM_ITEMS = [
   { href: "/api-keys", label: "API Keys", icon: Key },
   { href: "/team", label: "Team", icon: Users },
+  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/workspace", label: "Workspace", icon: Building2 },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
