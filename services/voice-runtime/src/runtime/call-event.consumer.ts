@@ -69,6 +69,9 @@ export class CallEventConsumer implements OnModuleInit {
       silenceTimeoutMs: this.config.get('SILENCE_TIMEOUT_MS'),
       llmClient: this.llmClient,
       logger: this.logger,
+      openAiApiKey: this.config.get('OPENAI_API_KEY'),
+      openAiModel: this.config.get('OPENAI_REALTIME_MODEL'),
+      openAiVoice: this.config.get('OPENAI_REALTIME_VOICE'),
     });
 
     this.sessionRegistry.register(callId, session);
