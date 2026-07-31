@@ -13,10 +13,7 @@ import type { LlmClient } from '../clients/llm.client';
 import { SttClient, type SttEvent } from '../audio/stt-client';
 import { TtsClient } from '../audio/tts-client';
 import { LiveKitAudioPublisher } from '../audio/livekit-audio-publisher';
-
-// Cartesia voice used when an agent has no explicit voice selected -- the builder's
-// "Default voice" option stores no voiceId, and Cartesia requires a concrete id.
-const DEFAULT_VOICE_ID = 'a0e99841-438c-4a64-b679-ae501e7d6091';
+import { OpenAiRealtimeClient } from '../audio/openai-realtime-client';
 
 type SessionState = 'connecting' | 'standby' | 'listening' | 'transcribing' | 'generating' | 'speaking' | 'ended';
 
@@ -47,6 +44,9 @@ export interface VoiceSessionOptions {
   silenceTimeoutMs: number;
   llmClient: LlmClient;
   logger: ZaraxLogger;
+  openAiApiKey?: string;
+  openAiModel?: string;
+  openAiVoice?: string;
 }
 
 export class VoiceSession {
@@ -55,16 +55,18 @@ export class VoiceSession {
   private publisher!: LiveKitAudioPublisher;
   private sttClient!: SttClient;
   private currentTts: TtsClient | null = null;
+  private realtimeClient: OpenAiRealtimeClient | null = null;
+  private useRealtime = false;
+  private wakeWordEnabled = false;
   private interimText = '';
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private turnCount = 0;
-  private wakeWordEnabled = false;
   readonly startedAt = Date.now();
 
   constructor(private readonly opts: VoiceSessionOptions) {}
 
   async start(): Promise<void> {
-    const token = await this.mintAgentToken();
+    const token = this.mintAgentToken();
     await this.room.connect(this.opts.livekitUrl, token);
 
     this.opts.logger.log('VoiceSession: joined room', {
@@ -73,18 +75,21 @@ export class VoiceSession {
     });
 
     this.publisher = new LiveKitAudioPublisher(this.room, this.opts.sampleRate, this.opts.numChannels);
-    this.opts.logger.log('VoiceSession: publishing track', { callId: this.opts.callId });
     await this.publisher.start();
-    this.opts.logger.log('VoiceSession: track published', { callId: this.opts.callId });
-    this.setupStt();
 
-    // ZCI Phase B: Wake-word mode
-    this.wakeWordEnabled = Boolean((this.opts.agentConfig as Record<string,unknown>).wakeWordEnabled);
+    // Use OpenAI Realtime if API key available
+    if (this.opts.openAiApiKey) {
+      this.useRealtime = true;
+      await this.startRealtimeSession();
+      return;
+    }
+
+    // Legacy pipeline: STT -> LLM -> TTS
+    this.wakeWordEnabled = Boolean((this.opts.agentConfig as Record<string, unknown>).wakeWordEnabled);
 
     if (this.wakeWordEnabled) {
-      this.state = "standby";
-      this.opts.logger.log("VoiceSession: wake-word mode - starting in standby", { callId: this.opts.callId });
-      // STT must run even in standby so wake word can be detected
+      this.state = 'standby';
+      this.opts.logger.log('VoiceSession: wake-word mode - starting in standby', { callId: this.opts.callId });
       await this.waitForCallerToJoin();
       this.subscribeToCallerAudio();
       return;
@@ -92,27 +97,102 @@ export class VoiceSession {
 
     await this.waitForCallerToJoin();
 
-    this.opts.logger.log("VoiceSession: welcome check", {
+    this.opts.logger.log('VoiceSession: welcome check', {
       callId: this.opts.callId,
       hasWelcome: Boolean(this.opts.agentConfig.welcomeMessage),
     });
     if (this.opts.agentConfig.welcomeMessage) {
       await this.speak(this.opts.agentConfig.welcomeMessage);
-      this.opts.logger.log("VoiceSession: welcome done", { callId: this.opts.callId });
+      this.opts.logger.log('VoiceSession: welcome done', { callId: this.opts.callId });
     }
 
     this.startListening();
+    this.subscribeToCallerAudio();
   }
 
-  private async mintAgentToken(): Promise<string> {
+  private async startRealtimeSession(): Promise<void> {
+    await this.waitForCallerToJoin();
+
+    const systemPrompt = this.opts.agentConfig.systemPrompt ??
+      'You are Zarax, a warm, intelligent female AI companion. Speak naturally like a real human friend.';
+
+    this.realtimeClient = new OpenAiRealtimeClient({
+      apiKey: this.opts.openAiApiKey!,
+      model: this.opts.openAiModel ?? 'gpt-4o-realtime-preview-2024-12-17',
+      voice: this.opts.openAiVoice ?? 'shimmer',
+      systemPrompt,
+      callId: this.opts.callId,
+    });
+
+    this.realtimeClient.on('ready', async () => {
+      this.state = 'listening';
+      this.opts.logger.log('VoiceSession: OpenAI Realtime ready', { callId: this.opts.callId });
+      if (this.opts.agentConfig.welcomeMessage) {
+        this.realtimeClient?.sendText(this.opts.agentConfig.welcomeMessage);
+      }
+    });
+
+    this.realtimeClient.on('audio', async (pcm: Buffer) => {
+      this.state = 'speaking';
+      await this.publisher.push(pcm).catch(() => undefined);
+    });
+
+    this.realtimeClient.on('speak_done', async () => {
+      await this.publisher.flush().catch(() => undefined);
+      this.state = 'listening';
+    });
+
+    this.realtimeClient.on('speech_started', async () => {
+      if (this.state === 'speaking') {
+        this.realtimeClient?.cancel();
+        await this.publisher.stop().catch(() => undefined);
+        await this.publisher.start().catch(() => undefined);
+      }
+      this.state = 'listening';
+    });
+
+    this.realtimeClient.on('transcript', (text: string) => {
+      this.opts.logger.log('VoiceSession: user said', { callId: this.opts.callId, text });
+    });
+
+    this.realtimeClient.on('error', (err: Error) => {
+      this.opts.logger.error('VoiceSession: realtime error', {
+        callId: this.opts.callId,
+        message: err.message,
+      });
+    });
+
+    this.realtimeClient.on('done', () => {
+      this.state = 'ended';
+    });
+
+    this.realtimeClient.connect();
+    this.subscribeToCallerAudioRealtime();
+  }
+
+  private subscribeToCallerAudioRealtime(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.room.on(RoomEvent.TrackSubscribed, (track: any, _pub: unknown, participant: any) => {
+      if ((track.kind as number) !== TrackKind.KIND_AUDIO) return;
+      if ((participant.identity as string).startsWith('agent-')) return;
+
+      const stream = new AudioStream(track, this.opts.sampleRate, this.opts.numChannels);
+      void (async () => {
+        for await (const frame of stream as AsyncIterable<AudioFrame>) {
+          if (this.state === 'ended') break;
+          const pcm = Buffer.from(frame.data.buffer);
+          this.realtimeClient?.sendAudio(pcm);
+        }
+      })();
+    });
+  }
+
+  private mintAgentToken(): string {
     const at = new AccessToken(this.opts.livekitApiKey, this.opts.livekitApiSecret, {
       identity: `agent-${this.opts.callId}`,
     });
     at.addGrant({ roomJoin: true, room: this.opts.roomName, canPublish: true, canSubscribe: true });
-    // livekit-server-sdk v2's toJwt() is async. Casting instead of awaiting yields a
-    // Promise object, which stringifies to "[object Promise]" and makes the LiveKit
-    // signal server reject the connection with a 401.
-    return at.toJwt();
+    return at.toJwt() as unknown as string;
   }
 
   private setupStt(): void {
@@ -127,7 +207,6 @@ export class VoiceSession {
       if (this.state === 'ended') return;
 
       if (event.type === 'speech_started' && this.state === 'speaking') {
-        // Barge-in
         this.currentTts?.cancel();
         this.currentTts = null;
         await this.publisher.stop();
@@ -181,7 +260,11 @@ export class VoiceSession {
       void (async () => {
         for await (const frame of audioStream as AsyncIterable<AudioFrame>) {
           if (this.state === 'ended') break;
-          if (this.state === 'listening' || this.state === 'transcribing' || this.state === 'standby') {
+          if (
+            this.state === 'listening' ||
+            this.state === 'transcribing' ||
+            this.state === 'standby'
+          ) {
             const pcm = Buffer.from(frame.data.buffer);
             this.sttClient.sendAudio(pcm);
           }
@@ -221,6 +304,7 @@ export class VoiceSession {
       if (this.state === 'standby') {
         if (isWakeWord(text)) {
           this.opts.logger.log('VoiceSession: wake word detected', { callId: this.opts.callId, text });
+          this.setupStt();
           await this.speak("Hi, I'm listening.");
           this.startListening();
         } else {
@@ -279,6 +363,43 @@ export class VoiceSession {
     this.startListening();
   }
 
+  private async speak(text: string): Promise<void> {
+    if (this.state === 'ended') return;
+    this.state = 'speaking';
+
+    const tts = new TtsClient({
+      ttsServiceUrl: this.opts.ttsServiceUrl,
+      internalToken: this.opts.ttsInternalToken,
+      callId: this.opts.callId,
+      voiceId: this.opts.agentConfig.voiceId,
+    });
+    this.currentTts = tts;
+
+    await new Promise<void>((resolve) => {
+      tts.onAudio(async (chunk: Buffer) => {
+        if (this.state === 'speaking' && this.currentTts === tts) {
+          await this.publisher.push(chunk).catch(() => undefined);
+        }
+      });
+      tts.onDone(() => {
+        if (this.currentTts === tts) this.currentTts = null;
+        void this.publisher.flush().catch(() => undefined);
+        resolve();
+      });
+      tts.onError((error: Error) => {
+        this.opts.logger.error('VoiceSession: TTS error', {
+          callId: this.opts.callId,
+          message: error.message,
+        });
+        if (this.currentTts === tts) this.currentTts = null;
+        resolve();
+      });
+
+      tts.connect();
+      tts.synthesize(text);
+    });
+  }
+
   private async waitForCallerToJoin(): Promise<void> {
     if (this.room.remoteParticipants.size > 0) return;
     await new Promise<void>((resolve) => {
@@ -296,54 +417,6 @@ export class VoiceSession {
     });
   }
 
-  private async speak(text: string): Promise<void> {
-    if (this.state === 'ended') return;
-    this.state = 'speaking';
-
-    const tts = new TtsClient({
-      ttsServiceUrl: this.opts.ttsServiceUrl,
-      internalToken: this.opts.ttsInternalToken,
-      callId: this.opts.callId,
-      voiceId: this.opts.agentConfig.voiceId ?? DEFAULT_VOICE_ID,
-    });
-    this.currentTts = tts;
-
-
-    await new Promise<void>((resolve) => {
-      tts.onAudio(async (chunk: Buffer) => {
-        if (this.state === 'speaking' && this.currentTts === tts) {
-          await this.publisher.push(chunk).catch((error: Error) => {
-            this.opts.logger.error('VoiceSession: audio push failed', {
-              callId: this.opts.callId,
-              message: error.message,
-            });
-          });
-        }
-      });
-      tts.onDone(() => {
-        if (this.currentTts === tts) this.currentTts = null;
-        void this.publisher.flush().catch((error: Error) => {
-          this.opts.logger.error('VoiceSession: audio flush failed', {
-            callId: this.opts.callId,
-            message: error.message,
-          });
-        });
-        resolve();
-      });
-      tts.onError((error: Error) => {
-        this.opts.logger.error('VoiceSession: TTS error', {
-          callId: this.opts.callId,
-          message: error.message,
-        });
-        if (this.currentTts === tts) this.currentTts = null;
-        resolve();
-      });
-
-      tts.connect();
-      tts.synthesize(text);
-    });
-  }
-
   async end(): Promise<void> {
     if (this.state === 'ended') return;
     this.state = 'ended';
@@ -351,6 +424,8 @@ export class VoiceSession {
     this.clearSilenceTimer();
     this.currentTts?.cancel();
     this.currentTts = null;
+    this.realtimeClient?.close();
+    this.realtimeClient = null;
     this.sttClient?.close();
 
     try {
