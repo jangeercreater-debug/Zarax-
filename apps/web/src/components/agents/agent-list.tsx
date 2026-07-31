@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { History, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { History, MoreVertical, Pencil, Trash2, Copy, Globe, GlobeLock } from 'lucide-react';
+import { toast } from 'sonner';
 
 import type { Agent } from '@/lib/types';
+import { useCloneAgent, usePublishAgent, useUnpublishAgent } from '@/hooks/use-agents';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,6 +14,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,6 +22,31 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DeleteAgentDialog } from './delete-agent-dialog';
 
 function AgentActionsMenu({ agent, onDelete }: { agent: Agent; onDelete: (agent: Agent) => void }) {
+  const cloneAgent = useCloneAgent();
+  const publishAgent = usePublishAgent(agent.id);
+  const unpublishAgent = useUnpublishAgent(agent.id);
+
+  const handleClone = () => {
+    cloneAgent.mutate(agent.id, {
+      onSuccess: (clone) => toast.success('Agent cloned', { description: `Created "${clone.name}".` }),
+      onError: () => toast.error('Could not clone agent'),
+    });
+  };
+
+  const handleTogglePublish = () => {
+    if (agent.isActive) {
+      unpublishAgent.mutate(undefined, {
+        onSuccess: () => toast.success('Agent unpublished'),
+        onError: () => toast.error('Could not unpublish'),
+      });
+    } else {
+      publishAgent.mutate(undefined, {
+        onSuccess: () => toast.success('Agent published'),
+        onError: () => toast.error('Could not publish'),
+      });
+    }
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -39,6 +67,15 @@ function AgentActionsMenu({ agent, onDelete }: { agent: Agent; onDelete: (agent:
             Version history
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleClone}>
+          <Copy className="mr-2 h-4 w-4" />
+          Clone
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleTogglePublish}>
+          {agent.isActive ? <GlobeLock className="mr-2 h-4 w-4" /> : <Globe className="mr-2 h-4 w-4" />}
+          {agent.isActive ? 'Unpublish' : 'Publish'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onDelete(agent)} className="text-destructive focus:text-destructive">
           <Trash2 className="mr-2 h-4 w-4" />
           Delete
@@ -81,13 +118,13 @@ export function AgentList({ agents }: { agents: Agent[] }) {
 
   return (
     <>
-      {/* Desktop: table */}
       <Card className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Provider</TableHead>
+              <TableHead>Model</TableHead>
               <TableHead>Version</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="w-12" />
@@ -103,6 +140,9 @@ export function AgentList({ agents }: { agents: Agent[] }) {
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {agent.config.provider ?? 'Default'}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-xs">
+                  {agent.config.model ?? 'default'}
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary">v{agent.currentVersion}</Badge>
@@ -121,7 +161,6 @@ export function AgentList({ agents }: { agents: Agent[] }) {
         </Table>
       </Card>
 
-      {/* Mobile: stacked cards */}
       <div className="space-y-3 md:hidden">
         {agents.map((agent) => (
           <Card key={agent.id}>
@@ -133,6 +172,7 @@ export function AgentList({ agents }: { agents: Agent[] }) {
                   <Badge variant={agent.isActive ? 'success' : 'secondary'}>
                     {agent.isActive ? 'Published' : 'Draft'}
                   </Badge>
+                  <span className="text-xs text-muted-foreground">{agent.config.model ?? 'default'}</span>
                 </div>
               </Link>
               <AgentActionsMenu agent={agent} onDelete={setAgentToDelete} />
