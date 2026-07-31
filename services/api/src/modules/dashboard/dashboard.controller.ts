@@ -40,7 +40,7 @@ export class DashboardController {
       this.prisma.call.count({ where: { tenantId, startedAt: { gte: monthAgo } } }),
       this.prisma.agent.count({ where: { tenantId } }),
       this.prisma.agent.count({ where: { tenantId, isActive: true } }),
-      this.prisma.document.count({ where: { tenantId } }).catch(() => 0),
+      this.prisma.knowledgeBaseDocument.count({ where: { tenantId } }).catch(() => 0),
       this.prisma.userMemory.count({ where: { tenantId } }).catch(() => 0),
       this.prisma.call.aggregate({
         where: { tenantId, durationMs: { not: null } },
