@@ -10,6 +10,7 @@ import { RagClient } from '../rag-client/rag-client';
 import { MemoryClient } from '../memory-client/memory-client';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
+import { ZARAX_SYSTEM_PROMPT, ZARAX_CONFIG } from './zarax-personality';
 import {
   AGENT_RUNTIME_CONFIG_DEFAULTS,
   resolveAgentRuntimeConfig,
@@ -65,6 +66,18 @@ export class ConversationOrchestratorService {
     const agent = await this.agentRepository.findByIdForTenantOrThrow(tenantId, agentId);
     const runtimeConfig = resolveAgentRuntimeConfig(agent.config);
 
+    // Auto-detect Zarax agent and inject personality
+    const isZarax = agent.name?.toLowerCase() === 'zarax';
+    const effectiveSystemPrompt = isZarax
+      ? ZARAX_SYSTEM_PROMPT
+      : runtimeConfig.systemPrompt;
+    const effectiveMaxTokens = isZarax
+      ? ZARAX_CONFIG.maxTokens
+      : runtimeConfig.maxTokens;
+    const effectiveTemperature = isZarax
+      ? ZARAX_CONFIG.temperature
+      : runtimeConfig.temperature;
+
     const provider = runtimeConfig.provider ?? AGENT_RUNTIME_CONFIG_DEFAULTS.provider;
     const model = runtimeConfig.model ?? AGENT_RUNTIME_CONFIG_DEFAULTS.model;
     const fallbackProviders = runtimeConfig.fallbackProviders ?? AGENT_RUNTIME_CONFIG_DEFAULTS.fallbackProviders;
@@ -72,11 +85,11 @@ export class ConversationOrchestratorService {
 
     let history = await this.conversationState.getHistory(tenantId, callId);
 
-    if (history.length === 0 && runtimeConfig.systemPrompt) {
-      const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
+    if (history.length === 0 && effectiveSystemPrompt) {
+      const styleHint = isZarax ? '' : RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
       const systemPrompt = styleHint
-        ? `${runtimeConfig.systemPrompt}\n\n${styleHint}`
-        : runtimeConfig.systemPrompt;
+        ? `${effectiveSystemPrompt}\n\n${styleHint}`
+        : effectiveSystemPrompt;
       history = [{ role: 'system', content: systemPrompt }];
     }
 
@@ -111,8 +124,8 @@ export class ConversationOrchestratorService {
       provider,
       model,
       fallbackProviders: fallbackProviders,
-      temperature: runtimeConfig.temperature,
-      maxTokens: runtimeConfig.maxTokens,
+      temperature: effectiveTemperature,
+      maxTokens: effectiveMaxTokens,
       maxIterations,
       history,
       tools,
