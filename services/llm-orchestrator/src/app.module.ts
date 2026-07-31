@@ -14,9 +14,8 @@ import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
 import { llmOrchestratorEnvSchema } from './config/env.schema';
 import { OrchestrationModule } from './orchestration/orchestration.module';
+import { SummaryModule } from './summary/summary.module';
 
-// See services/api/src/app.module.ts for why these instances are built directly from
-// process.env here rather than via DI — the same reasoning applies to every service.
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 
 @Module({
@@ -53,6 +52,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     }),
     PrismaClientModule.forRoot(),
     OrchestrationModule,
+    SummaryModule,
   ],
 })
 export class AppModule {}
