@@ -18,7 +18,7 @@ export class MemoryVectorService {
     });
     if (!res.ok) throw new Error("Embedding failed: " + res.status);
     const json = await res.json() as { embeddings: number[][] };
-    return json.embeddings[0];
+    return json.embeddings[0] ?? [];
   }
 
   async storeVector(tenantId: string, memoryId: string, text: string, category: string, key: string | null): Promise<void> {
