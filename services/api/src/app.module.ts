@@ -26,19 +26,12 @@ import { SystemModule } from './modules/system/system.module';
 import { MemoryModule } from './modules/memory/memory.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { StatsModule } from './modules/stats/stats.module';
 import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { TelephonyModule } from './modules/telephony/telephony.module';
 
-/**
- * NestJS evaluates every dynamic module's .forRoot() call when this file is loaded —
- * before the DI container exists. That means these bootstrap-critical instances can't
- * come from DI yet; they're built directly from process.env here, then re-exposed
- * through PrismaClientModule/EventBusModule for injection into the rest of the app.
- * (Full env validation still happens via AppConfigModule.forRoot() below — this is
- * only for the handful of things that must exist before that runs.)
- */
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 
 @Module({
@@ -66,7 +59,6 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
         useValue: new ServiceAccountRepository(prisma),
       },
     }),
-    // --- Production infrastructure standards (see docs/production-standards.md) ---
     AuditLogModule.forRoot(),
     RedisCacheModule.forRoot({ redisUrl: process.env.REDIS_URL ?? '' }),
     FeatureFlagsModule.forRoot(),
@@ -74,7 +66,6 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
       redisUrl: process.env.REDIS_URL ?? '',
       defaultRateLimit: { limit: 100, windowMs: 60_000 },
     }),
-    // --------------------------------------------------------------------------------
     PrismaClientModule.forRoot(),
     UsersAuthModule,
     TenantsModule,
@@ -86,6 +77,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     MemoryModule,
     AuditLogsModule,
     AnalyticsModule,
+    DashboardModule,
     StatsModule,
     WorkflowsModule,
     InternalModule,
