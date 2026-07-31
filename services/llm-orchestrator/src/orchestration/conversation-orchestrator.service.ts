@@ -11,7 +11,7 @@ import { MemoryClient } from '../memory-client/memory-client';
 import { DecisionEngine } from '../intelligence/decision-engine';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
-import { ZARAX_SYSTEM_PROMPT, ZARAX_CONFIG } from './zarax-personality';
+import { ZARAX_SYSTEM_PROMPT } from './zarax-personality';
 import {
   AGENT_RUNTIME_CONFIG_DEFAULTS,
   resolveAgentRuntimeConfig,
