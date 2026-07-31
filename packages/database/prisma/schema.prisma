@@ -501,3 +501,36 @@ model WorkflowExecution {
   @@index([tenantId, startedAt])
   @@map("workflow_executions")
 }
+
+model UserMemory {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  tenantId   String    @map("tenant_id")
+  category   String    // 'contact' | 'note' | 'preference' | 'task' | 'fact'
+  key        String?
+  value      Json
+  source     String    @default("voice") // 'voice' | 'text'
+  callId     String?   @map("call_id")
+  importance Int       @default(1)
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  @@index([userId, tenantId])
+  @@index([userId, tenantId, category])
+  @@map("user_memories")
+}
+
+model ConversationSummary {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  tenantId  String   @map("tenant_id")
+  callId    String   @map("call_id")
+  summary   String
+  keyPoints Json     @default("[]")
+  mood      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, tenantId])
+  @@map("conversation_summaries")
+}
