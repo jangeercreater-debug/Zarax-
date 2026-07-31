@@ -41,6 +41,10 @@ export const voiceRuntimeEnvSchema = baseEnvSchema
       // How many ms of silence before finalizing the current utterance (supplement
       // to Deepgram's own VAD, which may not always fire utterance_end perfectly).
       SILENCE_TIMEOUT_MS: z.coerce.number().default(1500),
+      // OpenAI Realtime API
+      OPENAI_API_KEY: z.string().optional(),
+      OPENAI_REALTIME_MODEL: z.string().default('gpt-4o-realtime-preview-2024-12-17'),
+      OPENAI_REALTIME_VOICE: z.string().default('alloy'),
     }),
   );
 
