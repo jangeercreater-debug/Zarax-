@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Inject, Query } from "@nestjs/common";
+import { Controller, Get, Post, Delete, Body, Param, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
