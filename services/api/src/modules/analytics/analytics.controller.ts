@@ -9,13 +9,13 @@ import { PERMISSIONS, type Principal } from "@zarax/shared-types";
 export class AnalyticsController {
   constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
-  @RequirePermission(PERMISSIONS.CALLS_READ)
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
   @ApiOperation({ summary: "Call analytics and trends." })
   @Get("calls")
   async callAnalytics(
     @CurrentPrincipal() principal: Principal,
     @Query("days") days?: string,
-  ) {
+  ): Promise<Record<string, unknown>> {
     const d = Math.min(Number(days ?? 30), 90);
     const since = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
     const tenantId = principal.tenantId;
@@ -27,13 +27,16 @@ export class AnalyticsController {
       this.prisma.call.aggregate({
         where: { tenantId, startedAt: { gte: since }, durationMs: { not: null } },
         _avg: { durationMs: true },
+        _max: { durationMs: true },
+        _min: { durationMs: true },
+        _sum: { durationMs: true },
       }),
       this.prisma.call.groupBy({
         by: ["agentId"],
         where: { tenantId, startedAt: { gte: since } },
         _count: { id: true },
         orderBy: { _count: { id: "desc" } },
-        take: 5,
+        take: 10,
       }),
     ]);
 
@@ -44,14 +47,22 @@ export class AnalyticsController {
     });
     const agentMap = Object.fromEntries(agents.map(a => [a.id, a.name]));
 
+    const failed = total - completed - active;
+    const successRate = total > 0 ? Math.round((completed / total) * 100) : 100;
+    const totalMinutes = Math.round((avgDuration._sum.durationMs ?? 0) / 60000);
+
     return {
       period: { days: d, since: since.toISOString() },
       calls: {
         total,
         completed,
         active,
-        failed: total - completed - active,
+        failed,
+        successRate,
         avgDurationMs: Math.round(avgDuration._avg.durationMs ?? 0),
+        maxDurationMs: avgDuration._max.durationMs ?? 0,
+        minDurationMs: avgDuration._min.durationMs ?? 0,
+        totalMinutes,
       },
       topAgents: byAgent.map(b => ({
         agentId: b.agentId,
@@ -61,13 +72,48 @@ export class AnalyticsController {
     };
   }
 
-  @RequirePermission(PERMISSIONS.CALLS_READ)
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
+  @ApiOperation({ summary: "Daily call trends." })
+  @Get("trends")
+  async dailyTrends(
+    @CurrentPrincipal() principal: Principal,
+    @Query("days") days?: string,
+  ): Promise<Record<string, unknown>> {
+    const d = Math.min(Number(days ?? 14), 90);
+    const tenantId = principal.tenantId;
+    const results: Array<{ date: string; calls: number; minutes: number }> = [];
+
+    for (let i = d - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+      const [count, duration] = await Promise.all([
+        this.prisma.call.count({ where: { tenantId, startedAt: { gte: start, lt: end } } }),
+        this.prisma.call.aggregate({
+          where: { tenantId, startedAt: { gte: start, lt: end }, durationMs: { not: null } },
+          _sum: { durationMs: true },
+        }),
+      ]);
+
+      results.push({
+        date: start.toISOString().split("T")[0] ?? "",
+        calls: count,
+        minutes: Math.round((duration._sum.durationMs ?? 0) / 60000),
+      });
+    }
+
+    return { period: { days: d }, trends: results };
+  }
+
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
   @ApiOperation({ summary: "Usage analytics (LLM, STT, TTS)." })
   @Get("usage")
   async usageAnalytics(
     @CurrentPrincipal() principal: Principal,
     @Query("days") days?: string,
-  ) {
+  ): Promise<Record<string, unknown>> {
     const d = Math.min(Number(days ?? 30), 90);
     const since = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
     const tenantId = principal.tenantId;
@@ -93,5 +139,32 @@ export class AnalyticsController {
         events: u._count.id,
       })),
     };
+  }
+
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
+  @ApiOperation({ summary: "Export analytics as CSV." })
+  @Get("export")
+  async exportCsv(
+    @CurrentPrincipal() principal: Principal,
+    @Query("days") days?: string,
+  ): Promise<Record<string, unknown>> {
+    const d = Math.min(Number(days ?? 30), 90);
+    const since = new Date(Date.now() - d * 24 * 60 * 60 * 1000);
+    const tenantId = principal.tenantId;
+
+    const calls = await this.prisma.call.findMany({
+      where: { tenantId, startedAt: { gte: since } },
+      orderBy: { startedAt: "desc" },
+      select: { id: true, agentId: true, startedAt: true, endedAt: true, durationMs: true, endReason: true },
+      take: 1000,
+    });
+
+    const header = "id,agentId,startedAt,endedAt,durationMs,endReason";
+    const rows = calls.map(c =>
+      [c.id, c.agentId, c.startedAt.toISOString(), c.endedAt?.toISOString() ?? "", c.durationMs ?? "", c.endReason ?? ""].join(",")
+    );
+    const csv = [header, ...rows].join("\n");
+
+    return { csv, totalRows: calls.length };
   }
 }
