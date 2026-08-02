@@ -22,17 +22,19 @@ datasource db {
 // docs/architecture.md for the tenant-isolation principle this encodes).
 // ---------------------------------------------------------------------------
 model Tenant {
-  id        String       @id @default(uuid())
-  name      String
-  slug      String       @unique
-  plan      TenantPlan   @default(FREE)
-  status    TenantStatus @default(PENDING_SETUP)
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
-  /// Soft delete — see docs/data-retention-policy.md. Never physically removed by
-  /// application code; a scheduled purge job (future work) hard-deletes rows past the
-  /// retention window.
-  deletedAt DateTime?    @map("deleted_at")
+  id         String       @id @default(uuid())
+  name       String
+  slug       String       @unique
+  plan       TenantPlan   @default(FREE)
+  status     TenantStatus @default(PENDING_SETUP)
+  logoUrl    String?      @map("logo_url")
+  industry   String?
+  timezone   String?      @default("UTC")
+  language   String?      @default("en")
+  companyUrl String?      @map("company_url")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  deletedAt  DateTime?    @map("deleted_at")
 
   memberships     TenantMembership[]
   apiKeys         ApiKey[]
