@@ -37,9 +37,6 @@ export default function EditAgentPage() {
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
-  // Unsaved-changes warning — covers tab close/refresh. Next.js's App Router has no
-  // built-in in-app navigation blocker (that's a react-router concept); in-app
-  // navigation is guarded separately below via a confirm on the "Back" link.
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
       if (!isDirty) return;
@@ -75,6 +72,10 @@ export default function EditAgentPage() {
           wakeWordEnabled: values.wakeWordEnabled,
           maxToolIterations: values.maxToolIterations,
           enabledTools: values.enabledTools,
+          avatarUrl: values.avatarUrl || undefined,
+          gender: values.gender || undefined,
+          voiceSpeed: values.voiceSpeed,
+          voiceEmotion: values.voiceEmotion || undefined,
         },
       },
       {
@@ -198,7 +199,7 @@ export default function EditAgentPage() {
             <p className="text-sm text-muted-foreground">
               {agent.isActive
                 ? 'This agent can take real calls.'
-                : 'Publish this agent once it’s ready to take real calls.'}
+                : 'Publish this agent once it is ready to take real calls.'}
             </p>
           </div>
           <Switch
