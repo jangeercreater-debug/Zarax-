@@ -11,6 +11,11 @@ export interface Tenant {
   slug: string;
   plan: string;
   status: string;
+  logoUrl?: string;
+  industry?: string;
+  timezone?: string;
+  language?: string;
+  companyUrl?: string;
 }
 
 /** Mirrors services/llm-orchestrator's AgentRuntimeConfig / services/api's AgentConfigDto. */
@@ -32,6 +37,10 @@ export interface AgentConfig {
   wakeWordEnabled?: boolean;
   maxToolIterations?: number;
   webhooks?: Record<string, string>;
+  avatarUrl?: string;
+  gender?: 'female' | 'male' | 'neutral';
+  voiceSpeed?: number;
+  voiceEmotion?: 'neutral' | 'happy' | 'calm' | 'serious' | 'friendly' | 'professional';
 }
 
 /** Mirrors services/api's AgentResponseDto. */
