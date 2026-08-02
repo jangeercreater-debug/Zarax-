@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Inject } from "@nestjs/common";
+import { Controller, Get, Patch, Delete, Body, Param, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
@@ -23,10 +23,10 @@ export class TeamController {
       id: m.user.id,
       fullName: m.user.fullName,
       email: m.user.email,
-      role: m.role,
+      role: m.role as string,
       joinedAt: m.createdAt.toISOString(),
       userCreatedAt: m.user.createdAt.toISOString(),
-      isOwner: m.role === "owner",
+      isOwner: (m.role as string) === "owner",
     }));
 
     return { members, total: members.length };
@@ -44,11 +44,11 @@ export class TeamController {
       where: { tenantId: principal.tenantId, userId },
     });
     if (!membership) return { error: "Member not found" };
-    if (membership.role === "owner") return { error: "Cannot change owner role" };
+    if ((membership.role as string) === "owner") return { error: "Cannot change owner role" };
 
     await this.prisma.tenantMembership.updateMany({
       where: { tenantId: principal.tenantId, userId },
-      data: { role: body.role },
+      data: { role: body.role as never },
     });
 
     return { updated: true, userId, role: body.role };
@@ -65,7 +65,7 @@ export class TeamController {
       where: { tenantId: principal.tenantId, userId },
     });
     if (!membership) return { error: "Member not found" };
-    if (membership.role === "owner") return { error: "Cannot remove owner" };
+    if ((membership.role as string) === "owner") return { error: "Cannot remove owner" };
     if (userId === principal.id) return { error: "Cannot remove yourself" };
 
     await this.prisma.tenantMembership.deleteMany({
@@ -92,7 +92,7 @@ export class TeamController {
 
     return {
       total,
-      byRole: byRole.map(r => ({ role: r.role, count: r._count.userId })),
+      byRole: byRole.map(r => ({ role: r.role as string, count: r._count.userId })),
     };
   }
 }
