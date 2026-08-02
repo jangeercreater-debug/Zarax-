@@ -16,15 +16,9 @@ import {
 const LLM_PROVIDERS = ['anthropic', 'groq', 'openai', 'gemini'] as const;
 const RESPONSE_STYLES = ['concise', 'balanced', 'detailed'] as const;
 const INTERRUPT_SENSITIVITIES = ['low', 'medium', 'high'] as const;
+const GENDERS = ['female', 'male', 'neutral'] as const;
+const VOICE_EMOTIONS = ['neutral', 'happy', 'calm', 'serious', 'friendly', 'professional'] as const;
 
-/**
- * Mirrors services/llm-orchestrator's `AgentRuntimeConfig` interface (see
- * services/llm-orchestrator/src/orchestration/agent-runtime-config.ts) — kept as a
- * plain re-declaration here rather than an import, since services/api has no other
- * reason to depend on llm-orchestrator or @zarax/ai-sdk, and the two are independently
- * versioned artifacts of the same informal contract (services/api validates/stores it;
- * llm-orchestrator is the one that actually interprets it at call time).
- */
 export class AgentConfigDto {
   @ApiProperty({ required: false, example: 'Handles first-line support tickets for Acme Corp.' })
   @IsOptional()
@@ -79,22 +73,18 @@ export class AgentConfigDto {
   @IsIn(RESPONSE_STYLES)
   responseStyle?: (typeof RESPONSE_STYLES)[number];
 
-  @ApiProperty({
-    required: false,
-    enum: INTERRUPT_SENSITIVITIES,
-    description: 'How readily the agent yields the floor when the caller starts speaking mid-response.',
-  })
+  @ApiProperty({ required: false, enum: INTERRUPT_SENSITIVITIES })
   @IsOptional()
   @IsIn(INTERRUPT_SENSITIVITIES)
   interruptSensitivity?: (typeof INTERRUPT_SENSITIVITIES)[number];
 
-  @ApiProperty({ required: false, example: 'sonic-english-warm', description: 'Cartesia voice id.' })
+  @ApiProperty({ required: false, description: 'Cartesia voice id.' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   voiceId?: string;
 
-  @ApiProperty({ required: false, example: 'nova-2', description: 'Deepgram STT model.' })
+  @ApiProperty({ required: false, description: 'Deepgram STT model.' })
   @IsOptional()
   @IsString()
   @MaxLength(200)
@@ -106,12 +96,12 @@ export class AgentConfigDto {
   @IsString({ each: true })
   enabledTools?: string[];
 
-  @ApiProperty({ required: false, description: 'Whether this agent retrieves context from the tenant knowledge base before answering.' })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsBoolean()
   ragEnabled?: boolean;
 
-  @ApiProperty({ required: false, description: "Enable wake-word mode. Agent starts in standby and activates on hearing Zarax." })
+  @ApiProperty({ required: false })
   @IsOptional()
   @IsBoolean()
   wakeWordEnabled?: boolean;
@@ -123,8 +113,31 @@ export class AgentConfigDto {
   @Max(20)
   maxToolIterations?: number;
 
-  @ApiProperty({ required: false, type: 'object', additionalProperties: { type: 'string' } })
+  @ApiProperty({ required: false, type: 'object' })
   @IsOptional()
   @IsObject()
   webhooks?: Record<string, string>;
+
+  @ApiProperty({ required: false, description: 'Agent avatar image URL.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  avatarUrl?: string;
+
+  @ApiProperty({ required: false, enum: GENDERS })
+  @IsOptional()
+  @IsIn(GENDERS)
+  gender?: (typeof GENDERS)[number];
+
+  @ApiProperty({ required: false, minimum: 0.5, maximum: 2.0, description: 'Voice speaking speed multiplier.' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.5)
+  @Max(2.0)
+  voiceSpeed?: number;
+
+  @ApiProperty({ required: false, enum: VOICE_EMOTIONS, description: 'Voice emotional tone.' })
+  @IsOptional()
+  @IsIn(VOICE_EMOTIONS)
+  voiceEmotion?: (typeof VOICE_EMOTIONS)[number];
 }
