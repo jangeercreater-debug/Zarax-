@@ -25,11 +25,12 @@ export class ApiKeysController {
   @Post()
   async create(
     @CurrentPrincipal() principal: Principal,
-    @Body() body: { label: string; scopes?: string[] },
+    @Body() body: { label: string; scopes?: string[]; expiresInDays?: number },
   ): Promise<Record<string, unknown>> {
     const rawKey = generateApiKey();
     const keyHash = hashKey(rawKey);
     const keyPrefix = rawKey.slice(0, 12) + "...";
+    const expiresAt = body.expiresInDays ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000) : null;
 
     const apiKey = await this.prisma.apiKey.create({
       data: {
@@ -47,6 +48,7 @@ export class ApiKeysController {
       key: rawKey,
       keyPrefix,
       scopes: apiKey.scopes,
+      expiresAt: expiresAt?.toISOString() ?? null,
       createdAt: apiKey.createdAt,
       message: "Save this key now. It will not be shown again.",
     };
@@ -61,15 +63,7 @@ export class ApiKeysController {
     const items = await this.prisma.apiKey.findMany({
       where: { tenantId: principal.tenantId },
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        label: true,
-        keyPrefix: true,
-        scopes: true,
-        revokedAt: true,
-        lastUsedAt: true,
-        createdAt: true,
-      },
+      select: { id: true, label: true, keyPrefix: true, scopes: true, revokedAt: true, lastUsedAt: true, createdAt: true },
     });
 
     return {
@@ -96,7 +90,7 @@ export class ApiKeysController {
   }
 
   @RequirePermission(PERMISSIONS.API_KEYS_MANAGE)
-  @ApiOperation({ summary: "Rotate an API key — revokes old, creates new with same config." })
+  @ApiOperation({ summary: "Rotate an API key." })
   @Post(":id/rotate")
   async rotate(
     @CurrentPrincipal() principal: Principal,
@@ -107,10 +101,7 @@ export class ApiKeysController {
     });
     if (!existing) return { error: "Key not found or already revoked" };
 
-    await this.prisma.apiKey.update({
-      where: { id },
-      data: { revokedAt: new Date() },
-    });
+    await this.prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } });
 
     const rawKey = generateApiKey();
     const keyHash = hashKey(rawKey);
@@ -132,7 +123,6 @@ export class ApiKeysController {
       key: rawKey,
       keyPrefix,
       scopes: newKey.scopes,
-      createdAt: newKey.createdAt,
       rotatedFrom: id,
       message: "Save this key now. It will not be shown again.",
     };
