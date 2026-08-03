@@ -8,7 +8,6 @@ setupTracing({
 
 /* eslint-disable import/order -- these imports must follow the tracing setup above */
 import 'reflect-metadata';
-import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -18,6 +17,13 @@ import { applyApiVersioning, setupGracefulShutdown, setupOpenApi } from '@zarax/
 
 import { AppModule } from './app.module';
 /* eslint-enable import/order */
+
+const ALLOWED_ORIGINS = [
+  'https://zaraxweb-production.up.railway.app',
+  'https://zarax1.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
 
 async function bootstrap(): Promise<void> {
   const logger = new ZaraxLogger({
@@ -37,41 +43,34 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // strips properties not declared in the DTO
-      forbidNonWhitelisted: true, // rejects requests containing unknown properties
-      transform: true, // auto-converts payloads to their DTO class instances
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
-  // Helmet — security headers (CSP disabled to avoid conflicts with API clients)
-  app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+  // Security: disable x-powered-by header
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
 
-  // CORS — strict allowlist, never open to all origins
-  const allowedOrigins = [
-    process.env.DASHBOARD_URL,
-    'https://zarax1.vercel.app',
-    'https://zaraxweb-production.up.railway.app',
-    'http://localhost:3000',
-    'http://localhost:3100',
-  ].filter((u): u is string => Boolean(u));
+  // CORS: restrict to known origins only
   app.enableCors({
-    origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.some((u) => origin.startsWith(u))) cb(null, true);
-      else cb(new Error(`CORS: origin ${origin} not allowed`));
-    },
+    origin: ALLOWED_ORIGINS,
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id'],
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Token', 'X-Tenant-Id', 'X-User-Id', 'X-Correlation-Id'],
+    maxAge: 86400,
   });
 
-  // Production standards (see docs/production-standards.md): every route defaults to
-  // /v1/... (health/metrics stay unversioned); OpenAPI docs auto-generate from the
-  // existing DTO/controller decorators and are served at /docs.
   applyApiVersioning(app);
-  setupOpenApi(app, {
-    serviceName: 'ZaraX API',
-    description: 'Core domain service — tenants, users/auth, agents.',
-  });
+
+  // Swagger: only expose in non-production environments
+  if (process.env.NODE_ENV !== 'production') {
+    setupOpenApi(app, {
+      serviceName: 'ZaraX API',
+      description: 'Core domain service — tenants, users/auth, agents.',
+    });
+    logger.log('Swagger docs enabled at /docs (non-production)');
+  }
 
   const port = Number(process.env.PORT ?? 3000);
   await app.listen(port);
