@@ -84,11 +84,12 @@ model User {
 }
 
 model TenantMembership {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  userId    String   @map("user_id")
-  role      MemberRole @default(MEMBER)
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  userId      String    @map("user_id")
+  role        MemberRole @default(MEMBER)
+  suspendedAt DateTime? @map("suspended_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -102,6 +103,9 @@ model TenantMembership {
 enum MemberRole {
   OWNER
   ADMIN
+  MANAGER
+  DEVELOPER
+  SUPPORT
   MEMBER
   VIEWER
 }
