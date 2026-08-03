@@ -121,10 +121,8 @@ export class VoiceSession {
     // Fetch memories and inject into prompt
     let memoryContext = '';
     try {
-      const memoryUrl = (this.opts as Record<string, unknown>).apiServiceUrl as string ??
-        process.env.API_SERVICE_URL ?? 'http://localhost:3000';
-      const memoryToken = (this.opts as Record<string, unknown>).apiInternalToken as string ??
-        process.env.API_INTERNAL_SERVICE_TOKEN ?? '';
+      const memoryUrl = process.env.API_SERVICE_URL ?? 'http://localhost:3000';
+      const memoryToken = process.env.API_INTERNAL_SERVICE_TOKEN ?? '';
       const res = await fetch(memoryUrl + '/v1/memory/search?q=user+preferences', {
         headers: { 'Authorization': 'Bearer ' + memoryToken, 'X-Tenant-Id': this.opts.tenantId },
         signal: AbortSignal.timeout(3000),
@@ -225,7 +223,7 @@ export class VoiceSession {
     });
 
     await new Promise(r => setTimeout(r, delay));
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
 
     this.realtimeClient?.close();
     await this.startRealtimeSession().catch((err: Error) => {
