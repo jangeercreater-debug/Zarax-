@@ -26,7 +26,9 @@ export class TeamController {
       role: m.role as string,
       joinedAt: m.createdAt.toISOString(),
       userCreatedAt: m.user.createdAt.toISOString(),
-      isOwner: (m.role as string) === "owner",
+      isOwner: (m.role as string) === "OWNER",
+      suspended: m.suspendedAt !== null,
+      suspendedAt: m.suspendedAt?.toISOString() ?? null,
     }));
 
     return { members, total: members.length };
@@ -44,7 +46,7 @@ export class TeamController {
       where: { tenantId: principal.tenantId, userId },
     });
     if (!membership) return { error: "Member not found" };
-    if ((membership.role as string) === "owner") return { error: "Cannot change owner role" };
+    if ((membership.role as string) === "OWNER") return { error: "Cannot change owner role" };
 
     await this.prisma.tenantMembership.updateMany({
       where: { tenantId: principal.tenantId, userId },
@@ -52,6 +54,43 @@ export class TeamController {
     });
 
     return { updated: true, userId, role: body.role };
+  }
+
+  @RequirePermission(PERMISSIONS.TENANT_MANAGE_MEMBERS)
+  @ApiOperation({ summary: "Suspend a member." })
+  @Patch("members/:userId/suspend")
+  async suspendMember(
+    @CurrentPrincipal() principal: Principal,
+    @Param("userId") userId: string,
+  ): Promise<Record<string, unknown>> {
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: { tenantId: principal.tenantId, userId },
+    });
+    if (!membership) return { error: "Member not found" };
+    if ((membership.role as string) === "OWNER") return { error: "Cannot suspend owner" };
+    if (userId === principal.id) return { error: "Cannot suspend yourself" };
+
+    await this.prisma.tenantMembership.updateMany({
+      where: { tenantId: principal.tenantId, userId },
+      data: { suspendedAt: new Date() },
+    });
+
+    return { suspended: true, userId };
+  }
+
+  @RequirePermission(PERMISSIONS.TENANT_MANAGE_MEMBERS)
+  @ApiOperation({ summary: "Activate a suspended member." })
+  @Patch("members/:userId/activate")
+  async activateMember(
+    @CurrentPrincipal() principal: Principal,
+    @Param("userId") userId: string,
+  ): Promise<Record<string, unknown>> {
+    await this.prisma.tenantMembership.updateMany({
+      where: { tenantId: principal.tenantId, userId },
+      data: { suspendedAt: null },
+    });
+
+    return { activated: true, userId };
   }
 
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_MEMBERS)
@@ -65,7 +104,7 @@ export class TeamController {
       where: { tenantId: principal.tenantId, userId },
     });
     if (!membership) return { error: "Member not found" };
-    if ((membership.role as string) === "owner") return { error: "Cannot remove owner" };
+    if ((membership.role as string) === "OWNER") return { error: "Cannot remove owner" };
     if (userId === principal.id) return { error: "Cannot remove yourself" };
 
     await this.prisma.tenantMembership.deleteMany({
@@ -81,8 +120,9 @@ export class TeamController {
   async stats(@CurrentPrincipal() principal: Principal): Promise<Record<string, unknown>> {
     const tenantId = principal.tenantId;
 
-    const [total, byRole] = await Promise.all([
+    const [total, suspended, byRole] = await Promise.all([
       this.prisma.tenantMembership.count({ where: { tenantId } }),
+      this.prisma.tenantMembership.count({ where: { tenantId, suspendedAt: { not: null } } }),
       this.prisma.tenantMembership.groupBy({
         by: ["role"],
         where: { tenantId },
@@ -92,6 +132,8 @@ export class TeamController {
 
     return {
       total,
+      active: total - suspended,
+      suspended,
       byRole: byRole.map(r => ({ role: r.role as string, count: r._count.userId })),
     };
   }
