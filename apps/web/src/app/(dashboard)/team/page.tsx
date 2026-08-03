@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Users, Shield, UserMinus, ChevronDown } from "lucide-react";
+import { Users, Shield, UserMinus, ChevronDown, UserCheck, UserX } from "lucide-react";
 
 interface Member {
   id: string;
@@ -9,6 +9,7 @@ interface Member {
   role: string;
   joinedAt: string;
   isOwner: boolean;
+  suspended?: boolean;
 }
 
 interface TeamStats {
@@ -21,11 +22,12 @@ const ROLE_COLORS: Record<string, string> = {
   admin: "bg-blue-100 text-blue-700",
   manager: "bg-teal-100 text-teal-700",
   developer: "bg-orange-100 text-orange-700",
+  support: "bg-yellow-100 text-yellow-700",
   member: "bg-green-100 text-green-700",
   viewer: "bg-gray-100 text-gray-700",
 };
 
-const ROLES = ["admin", "manager", "developer", "member", "viewer"];
+const ROLES = ["admin", "manager", "developer", "support", "member", "viewer"];
 
 export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -62,6 +64,26 @@ export default function TeamPage() {
     setMembers(prev => prev.filter(m => m.id !== userId));
   };
 
+  const handleSuspend = async (userId: string) => {
+    await fetch("/api/team/members/" + userId + "/role", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ role: "viewer" }),
+    });
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: "viewer", suspended: true } : m));
+  };
+
+  const handleActivate = async (userId: string) => {
+    await fetch("/api/team/members/" + userId + "/role", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ role: "member" }),
+    });
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: "member", suspended: false } : m));
+  };
+
   const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 
   if (loading) {
@@ -79,7 +101,7 @@ export default function TeamPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Team</h1>
-        <p className="text-sm text-muted-foreground">Manage your team members and roles.</p>
+        <p className="text-sm text-muted-foreground">Manage your team members, roles, and access.</p>
       </div>
 
       {stats && (
@@ -121,42 +143,54 @@ export default function TeamPage() {
 
         <div className="divide-y">
           {members.map(m => (
-            <div key={m.id} className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40">
+            <div key={m.id} className={"flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40 " + (m.suspended ? "opacity-60" : "")}>
               <div className="min-w-0">
-                <p className="text-sm font-medium">{m.fullName ?? "No name"}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{m.fullName ?? "No name"}</p>
+                  {m.suspended && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Suspended</span>}
+                </div>
                 <p className="text-xs text-muted-foreground">{m.email} · Joined {fmtDate(m.joinedAt)}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {m.isOwner ? (
                   <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + ROLE_COLORS.owner}>owner</span>
                 ) : (
-                  <div className="relative">
-                    <button
-                      onClick={() => setEditingRole(editingRole === m.id ? null : m.id)}
-                      className={"inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full " + (ROLE_COLORS[m.role] ?? ROLE_COLORS.member)}
-                    >
-                      {m.role}
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                    {editingRole === m.id && (
-                      <div className="absolute right-0 top-8 z-10 rounded-md border bg-card shadow-lg py-1 min-w-[120px]">
-                        {ROLES.map(r => (
-                          <button
-                            key={r}
-                            onClick={() => handleRoleChange(m.id, r)}
-                            className={"block w-full text-left px-3 py-1.5 text-sm hover:bg-muted capitalize " + (r === m.role ? "font-bold" : "")}
-                          >
-                            {r}
-                          </button>
-                        ))}
-                      </div>
+                  <>
+                    <div className="relative">
+                      <button
+                        onClick={() => setEditingRole(editingRole === m.id ? null : m.id)}
+                        className={"inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full " + (ROLE_COLORS[m.role] ?? ROLE_COLORS.member)}
+                      >
+                        {m.role}
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                      {editingRole === m.id && (
+                        <div className="absolute right-0 top-8 z-10 rounded-md border bg-card shadow-lg py-1 min-w-[120px]">
+                          {ROLES.map(r => (
+                            <button
+                              key={r}
+                              onClick={() => handleRoleChange(m.id, r)}
+                              className={"block w-full text-left px-3 py-1.5 text-sm hover:bg-muted capitalize " + (r === m.role ? "font-bold" : "")}
+                            >
+                              {r}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {m.suspended ? (
+                      <button onClick={() => handleActivate(m.id)} className="text-green-600 hover:text-green-700 p-1" title="Activate">
+                        <UserCheck className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <button onClick={() => handleSuspend(m.id)} className="text-yellow-600 hover:text-yellow-700 p-1" title="Suspend">
+                        <UserX className="h-4 w-4" />
+                      </button>
                     )}
-                  </div>
-                )}
-                {!m.isOwner && (
-                  <button onClick={() => handleRemove(m.id, m.fullName ?? m.email)} className="text-red-500 hover:text-red-700 p-1">
-                    <UserMinus className="h-4 w-4" />
-                  </button>
+                    <button onClick={() => handleRemove(m.id, m.fullName ?? m.email)} className="text-red-500 hover:text-red-700 p-1" title="Remove">
+                      <UserMinus className="h-4 w-4" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>
