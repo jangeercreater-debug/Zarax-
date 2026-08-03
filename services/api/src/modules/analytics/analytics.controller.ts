@@ -167,4 +167,28 @@ export class AnalyticsController {
 
     return { csv, totalRows: calls.length };
   }
+
+  @RequirePermission(PERMISSIONS.ANALYTICS_READ)
+  @ApiOperation({ summary: "Top users by activity." })
+  @Get("top-users")
+  async topUsers(
+    @CurrentPrincipal() principal: Principal,
+    @Query("days") days?: string,
+  ): Promise<Record<string, unknown>> {
+    const d = Math.min(Number(days ?? 30), 90);
+    const tenantId = principal.tenantId;
+
+    const members = await this.prisma.tenantMembership.findMany({
+      where: { tenantId },
+      include: { user: { select: { id: true, fullName: true, email: true } } },
+    });
+
+    const topUsers = members.map(m => ({
+      userId: m.user.id,
+      name: m.user.fullName ?? m.user.email,
+      role: m.role as string,
+    })).slice(0, 10);
+
+    return { period: { days: d }, topUsers, totalMembers: members.length };
+  }
 }
