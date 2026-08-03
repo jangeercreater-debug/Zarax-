@@ -9,25 +9,28 @@ interface Member {
   role: string;
   joinedAt: string;
   isOwner: boolean;
-  suspended?: boolean;
+  suspended: boolean;
+  suspendedAt: string | null;
 }
 
 interface TeamStats {
   total: number;
+  active: number;
+  suspended: number;
   byRole: Array<{ role: string; count: number }>;
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-purple-100 text-purple-700",
-  admin: "bg-blue-100 text-blue-700",
-  manager: "bg-teal-100 text-teal-700",
-  developer: "bg-orange-100 text-orange-700",
-  support: "bg-yellow-100 text-yellow-700",
-  member: "bg-green-100 text-green-700",
-  viewer: "bg-gray-100 text-gray-700",
+  OWNER: "bg-purple-100 text-purple-700",
+  ADMIN: "bg-blue-100 text-blue-700",
+  MANAGER: "bg-teal-100 text-teal-700",
+  DEVELOPER: "bg-orange-100 text-orange-700",
+  SUPPORT: "bg-yellow-100 text-yellow-700",
+  MEMBER: "bg-green-100 text-green-700",
+  VIEWER: "bg-gray-100 text-gray-700",
 };
 
-const ROLES = ["admin", "manager", "developer", "support", "member", "viewer"];
+const ROLES = ["ADMIN", "MANAGER", "DEVELOPER", "SUPPORT", "MEMBER", "VIEWER"];
 
 export default function TeamPage() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -59,29 +62,24 @@ export default function TeamPage() {
   };
 
   const handleRemove = async (userId: string, name: string) => {
-    if (!confirm("Remove " + name + " from the team?")) return;
+    if (!confirm("Remove " + name + " from the team? This cannot be undone.")) return;
     await fetch("/api/team/members/" + userId, { method: "DELETE", credentials: "include" });
     setMembers(prev => prev.filter(m => m.id !== userId));
   };
 
-  const handleSuspend = async (userId: string) => {
-    await fetch("/api/team/members/" + userId + "/role", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ role: "viewer" }),
+  const handleSuspend = async (userId: string, name: string) => {
+    if (!confirm("Suspend " + name + "? They will lose access to the workspace.")) return;
+    await fetch("/api/team/members/" + userId + "/suspend", {
+      method: "PATCH", credentials: "include",
     });
-    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: "viewer", suspended: true } : m));
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, suspended: true, suspendedAt: new Date().toISOString() } : m));
   };
 
   const handleActivate = async (userId: string) => {
-    await fetch("/api/team/members/" + userId + "/role", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ role: "member" }),
+    await fetch("/api/team/members/" + userId + "/activate", {
+      method: "PATCH", credentials: "include",
     });
-    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: "member", suspended: false } : m));
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, suspended: false, suspendedAt: null } : m));
   };
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -113,13 +111,27 @@ export default function TeamPage() {
             </div>
             <p className="text-2xl font-bold">{stats.total}</p>
           </div>
-          {stats.byRole.map(r => (
+          <div className="rounded-xl border bg-card p-4">
+            <div className="flex items-center justify-between pb-2">
+              <p className="text-sm text-muted-foreground">Active</p>
+              <UserCheck className="h-4 w-4 text-green-500" />
+            </div>
+            <p className="text-2xl font-bold">{stats.active}</p>
+          </div>
+          <div className="rounded-xl border bg-card p-4">
+            <div className="flex items-center justify-between pb-2">
+              <p className="text-sm text-muted-foreground">Suspended</p>
+              <UserX className="h-4 w-4 text-red-500" />
+            </div>
+            <p className="text-2xl font-bold">{stats.suspended}</p>
+          </div>
+          {stats.byRole.slice(0, 1).map(r => (
             <div key={r.role} className="rounded-xl border bg-card p-4">
               <div className="flex items-center justify-between pb-2">
-                <p className="text-sm text-muted-foreground capitalize">{r.role}s</p>
+                <p className="text-sm text-muted-foreground">Roles Used</p>
                 <Shield className="h-4 w-4 text-purple-500" />
               </div>
-              <p className="text-2xl font-bold">{r.count}</p>
+              <p className="text-2xl font-bold">{stats.byRole.length}</p>
             </div>
           ))}
         </div>
@@ -143,23 +155,26 @@ export default function TeamPage() {
 
         <div className="divide-y">
           {members.map(m => (
-            <div key={m.id} className={"flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40 " + (m.suspended ? "opacity-60" : "")}>
+            <div key={m.id} className={"flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/40 " + (m.suspended ? "opacity-60 bg-red-50 dark:bg-red-950/10" : "")}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium">{m.fullName ?? "No name"}</p>
                   {m.suspended && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">Suspended</span>}
                 </div>
-                <p className="text-xs text-muted-foreground">{m.email} · Joined {fmtDate(m.joinedAt)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {m.email} · Joined {fmtDate(m.joinedAt)}
+                  {m.suspended && m.suspendedAt ? " · Suspended " + fmtDate(m.suspendedAt) : ""}
+                </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {m.isOwner ? (
-                  <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + ROLE_COLORS.owner}>owner</span>
+                  <span className={"text-xs font-medium px-2 py-0.5 rounded-full " + ROLE_COLORS.OWNER}>OWNER</span>
                 ) : (
                   <>
                     <div className="relative">
                       <button
                         onClick={() => setEditingRole(editingRole === m.id ? null : m.id)}
-                        className={"inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full " + (ROLE_COLORS[m.role] ?? ROLE_COLORS.member)}
+                        className={"inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full " + (ROLE_COLORS[m.role] ?? ROLE_COLORS.MEMBER)}
                       >
                         {m.role}
                         <ChevronDown className="h-3 w-3" />
@@ -170,7 +185,7 @@ export default function TeamPage() {
                             <button
                               key={r}
                               onClick={() => handleRoleChange(m.id, r)}
-                              className={"block w-full text-left px-3 py-1.5 text-sm hover:bg-muted capitalize " + (r === m.role ? "font-bold" : "")}
+                              className={"block w-full text-left px-3 py-1.5 text-sm hover:bg-muted " + (r === m.role ? "font-bold" : "")}
                             >
                               {r}
                             </button>
@@ -183,7 +198,7 @@ export default function TeamPage() {
                         <UserCheck className="h-4 w-4" />
                       </button>
                     ) : (
-                      <button onClick={() => handleSuspend(m.id)} className="text-yellow-600 hover:text-yellow-700 p-1" title="Suspend">
+                      <button onClick={() => handleSuspend(m.id, m.fullName ?? m.email)} className="text-yellow-600 hover:text-yellow-700 p-1" title="Suspend">
                         <UserX className="h-4 w-4" />
                       </button>
                     )}
