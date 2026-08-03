@@ -1,10 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { User, Lock, Building2, Shield, Palette, Bot, Mic } from "lucide-react";
-
-interface Profile { email: string; fullName: string }
-interface Session { id: string; createdAt: string; current?: boolean }
-interface Membership { tenantId: string; tenantName: string; role: string }
+import { User, Lock, Building2, Shield, Palette, Bot, Mic, Trash2 } from "lucide-react";
 
 const TABS = [
   { id: "profile", label: "Profile", icon: User },
@@ -18,9 +14,9 @@ const TABS = [
 
 export default function SettingsPage() {
   const [tab, setTab] = useState("profile");
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [orgs, setOrgs] = useState<Membership[]>([]);
+  const [profile, setProfile] = useState<{ email: string; fullName: string } | null>(null);
+  const [sessions, setSessions] = useState<Array<{ id: string; createdAt: string; isCurrent?: boolean }>>([]);
+  const [orgs, setOrgs] = useState<Array<{ tenantId: string; tenantName: string; role: string }>>([]);
   const [fullName, setFullName] = useState("");
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -29,6 +25,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [theme, setTheme] = useState("system");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   useEffect(() => {
     fetch("/api/users/me", { credentials: "include" }).then(r => r.json()).then(j => { const d = j.data ?? j; setProfile(d); setFullName(d.fullName ?? ""); }).catch(() => undefined);
@@ -58,6 +55,12 @@ export default function SettingsPage() {
     setSessions(s => s.filter(x => x.id !== id));
   };
 
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== "DELETE") return;
+    await fetch("/api/users/me", { method: "DELETE", credentials: "include" });
+    window.location.href = "/login";
+  };
+
   const fmtDate = (d: string) => new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   const ROLES = [
@@ -65,6 +68,7 @@ export default function SettingsPage() {
     { role: "ADMIN", color: "bg-blue-100 text-blue-700", perms: ["Manage agents, workflows", "Manage team members", "Manage API keys", "View analytics and logs"] },
     { role: "MANAGER", color: "bg-teal-100 text-teal-700", perms: ["Manage agents", "Manage team", "View analytics", "Manage knowledge base"] },
     { role: "DEVELOPER", color: "bg-orange-100 text-orange-700", perms: ["Create and manage agents", "Manage workflows and tools", "Manage API keys", "View analytics"] },
+    { role: "SUPPORT", color: "bg-yellow-100 text-yellow-700", perms: ["Create and view calls", "View agents", "Execute workflows", "View analytics and audit logs"] },
     { role: "MEMBER", color: "bg-green-100 text-green-700", perms: ["Create calls", "View agents", "Execute workflows"] },
     { role: "VIEWER", color: "bg-gray-100 text-gray-700", perms: ["Read-only access", "View analytics"] },
   ];
@@ -85,19 +89,34 @@ export default function SettingsPage() {
       </div>
 
       {tab === "profile" && (
-        <div className="rounded-xl border bg-card p-6 space-y-4">
-          <h2 className="text-base font-semibold">Profile Information</h2>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Email</label>
-            <input className="flex h-10 w-full rounded-md border bg-muted px-3 py-2 text-sm" value={profile?.email ?? ""} disabled />
+        <div className="space-y-4">
+          <div className="rounded-xl border bg-card p-6 space-y-4">
+            <h2 className="text-base font-semibold">Profile Information</h2>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Email</label>
+              <input className="flex h-10 w-full rounded-md border bg-muted px-3 py-2 text-sm" value={profile?.email ?? ""} disabled />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Full Name</label>
+              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={fullName} onChange={e => setFullName(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={handleProfileSave} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{saving ? "Saving..." : "Save Changes"}</button>
+              {saved && <span className="text-sm text-green-600">Saved!</span>}
+            </div>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Full Name</label>
-            <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value={fullName} onChange={e => setFullName(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={handleProfileSave} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">{saving ? "Saving..." : "Save Changes"}</button>
-            {saved && <span className="text-sm text-green-600">Saved!</span>}
+
+          <div className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-600" />
+              <h2 className="text-base font-semibold text-red-700">Delete Account</h2>
+            </div>
+            <p className="text-sm text-red-600">This action is permanent. All your data, agents, and conversations will be permanently deleted.</p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-red-700">Type DELETE to confirm</label>
+              <input className="flex h-10 w-full rounded-md border border-red-300 bg-background px-3 py-2 text-sm" value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)} placeholder="DELETE" />
+            </div>
+            <button onClick={handleDeleteAccount} disabled={deleteConfirm !== "DELETE"} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">Permanently Delete Account</button>
           </div>
         </div>
       )}
@@ -121,7 +140,6 @@ export default function SettingsPage() {
             {pwError && <p className="text-sm text-red-500">{pwError}</p>}
             <button onClick={handlePasswordChange} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">Change Password</button>
           </div>
-
           <div className="rounded-xl border bg-card p-6 space-y-4">
             <h2 className="text-base font-semibold">Active Sessions</h2>
             {sessions.length === 0 && <p className="text-sm text-muted-foreground">No active sessions.</p>}
@@ -129,10 +147,10 @@ export default function SettingsPage() {
               {sessions.map(s => (
                 <div key={s.id} className="flex items-center justify-between py-3">
                   <div>
-                    <p className="text-sm font-medium">{s.current ? "Current Session" : "Session"}</p>
+                    <p className="text-sm font-medium">{s.isCurrent ? "Current Session" : "Session"}</p>
                     <p className="text-xs text-muted-foreground">Started {fmtDate(s.createdAt)}</p>
                   </div>
-                  {s.current ? <span className="text-xs rounded-full border px-2 py-0.5">Current</span> : <button onClick={() => handleRevokeSession(s.id)} className="text-xs text-red-500 hover:underline">Revoke</button>}
+                  {s.isCurrent ? <span className="text-xs rounded-full border px-2 py-0.5">Current</span> : <button onClick={() => handleRevokeSession(s.id)} className="text-xs text-red-500 hover:underline">Revoke</button>}
                 </div>
               ))}
             </div>
@@ -182,15 +200,15 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Default Model</label>
-              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value="claude-sonnet-4-5" disabled />
+              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" defaultValue="claude-sonnet-4-5" />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Default Temperature</label>
-              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value="0.7" disabled />
+              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" defaultValue="0.7" />
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium">Default Max Tokens</label>
-              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" value="1024" disabled />
+              <input className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm" defaultValue="1024" />
             </div>
           </div>
         </div>
@@ -199,7 +217,6 @@ export default function SettingsPage() {
       {tab === "voice" && (
         <div className="rounded-xl border bg-card p-6 space-y-4">
           <h2 className="text-base font-semibold">Voice Settings</h2>
-          <p className="text-sm text-muted-foreground">Default voice configuration for agents.</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-sm font-medium">TTS Provider</label>
@@ -224,7 +241,6 @@ export default function SettingsPage() {
       {tab === "appearance" && (
         <div className="rounded-xl border bg-card p-6 space-y-4">
           <h2 className="text-base font-semibold">Appearance</h2>
-          <p className="text-sm text-muted-foreground">Customize the look and feel.</p>
           <div className="space-y-1">
             <label className="text-sm font-medium">Theme</label>
             <div className="flex gap-3">
