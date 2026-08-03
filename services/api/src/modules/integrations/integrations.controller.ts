@@ -1,4 +1,4 @@
-import { Controller, Get, Inject } from "@nestjs/common";
+import { Controller, Get } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PERMISSIONS, type Principal } from "@zarax/shared-types";
@@ -94,7 +94,7 @@ export class IntegrationsController {
   @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
   @ApiOperation({ summary: "List all available integrations with connection status." })
   @Get()
-  async list(@CurrentPrincipal() principal: Principal): Promise<Record<string, unknown>> {
+  async list(@CurrentPrincipal() _principal: Principal): Promise<Record<string, unknown>> {
     const statuses: IntegrationStatus[] = INTEGRATIONS.map((integration) => {
       const configured = integration.requiredEnvKeys.filter((key) => Boolean(process.env[key]));
       const missing = integration.requiredEnvKeys.filter((key) => !process.env[key]);
@@ -127,7 +127,7 @@ export class IntegrationsController {
   @RequirePermission(PERMISSIONS.SETTINGS_MANAGE)
   @ApiOperation({ summary: "Get integration details by ID." })
   @Get(":id")
-  async getById(@CurrentPrincipal() principal: Principal): Promise<Record<string, unknown>> {
+  async getById(@CurrentPrincipal() _principal: Principal): Promise<Record<string, unknown>> {
     return { message: "Use GET /integrations for full list with status." };
   }
 }
