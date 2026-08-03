@@ -33,6 +33,7 @@ import { WorkflowsModule } from './modules/workflows/workflows.module';
 import { InternalModule } from './modules/internal/internal.module';
 import { TelephonyModule } from './modules/telephony/telephony.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 
@@ -86,6 +87,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     InternalModule,
     TelephonyModule,
     WebhooksModule,
+    IntegrationsModule,
   ],
 })
 export class AppModule {}
