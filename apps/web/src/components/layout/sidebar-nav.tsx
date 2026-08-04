@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Mic2, LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge, Building2, CreditCard } from "lucide-react";
+import { Mic2, LayoutDashboard, Bot, MessageSquare, Library, Phone, Workflow, Key, Users, Settings, BarChart2, Shield, Activity, Gauge, Building2, CreditCard, Puzzle } from "lucide-react";
 import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/knowledge-base", label: "Knowledge Base", icon: Library },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/audit-logs", label: "Audit Logs", icon: Shield },
+  { href: "/integrations", label: "Integrations", icon: Puzzle },
   { href: "/system-health", label: "System Health", icon: Activity },
   { href: "/performance", label: "Performance", icon: Gauge },
 ];
