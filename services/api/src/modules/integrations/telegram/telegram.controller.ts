@@ -1,7 +1,6 @@
-import { Controller, Post, Get, Body, Inject, RawBodyRequest, Req } from "@nestjs/common";
+import { Controller, Post, Get, Body, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
-import type { Request } from "express";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
