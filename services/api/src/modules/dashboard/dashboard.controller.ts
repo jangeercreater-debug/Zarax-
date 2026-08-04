@@ -23,7 +23,7 @@ export class DashboardController {
     const cacheKey = "dashboard:stats:" + tenantId;
 
     // Try cache first
-    const cached = await this.cache.get<Record<string, unknown>>(cacheKey).catch(() => null);
+    const cached = await this.cache.get<Record<string, unknown>>(tenantId as never, cacheKey).catch(() => null);
     if (cached) return cached;
 
     const now = new Date();
@@ -83,7 +83,7 @@ export class DashboardController {
     };
 
     // Cache for 60 seconds
-    await this.cache.set(cacheKey, result, CACHE_TTL_SECONDS).catch(() => undefined);
+    await this.cache.set(tenantId as never, cacheKey, result, CACHE_TTL_SECONDS).catch(() => undefined);
 
     return result;
   }
