@@ -3,29 +3,17 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
 import { PERMISSIONS, type Principal } from "@zarax/shared-types";
-import { CacheService } from "@zarax/redis-client";
-
-const CACHE_TTL_SECONDS = 60;
 
 @ApiTags("dashboard")
 @Controller("dashboard")
 export class DashboardController {
-  constructor(
-    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
-    private readonly cache: CacheService,
-  ) {}
+  constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
   @RequirePermission(PERMISSIONS.CALLS_READ)
-  @ApiOperation({ summary: "Complete dashboard stats with caching." })
+  @ApiOperation({ summary: "Complete dashboard stats." })
   @Get("stats")
   async stats(@CurrentPrincipal() principal: Principal): Promise<Record<string, unknown>> {
     const tenantId = principal.tenantId;
-    const cacheKey = "dashboard:stats:" + tenantId;
-
-    // Try cache first
-    const cached = await this.cache.get<Record<string, unknown>>(tenantId as never, cacheKey).catch(() => null);
-    if (cached) return cached;
-
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -71,7 +59,7 @@ export class DashboardController {
     const monthlyCost = Math.round((monthlyUsage._sum.costUsd ?? 0) * 100) / 100;
     const successRate = totalCalls > 0 ? Math.round(((totalCalls - failedCalls) / totalCalls) * 100) : 100;
 
-    const result = {
+    return {
       overview: {
         totalCalls, activeCalls, todayCalls, weekCalls, monthCalls, failedCalls, successRate,
         totalAgents, publishedAgents, totalDocuments, totalMemories, totalMembers, totalApiKeys,
@@ -81,11 +69,6 @@ export class DashboardController {
       recentErrors,
       dailyStats,
     };
-
-    // Cache for 60 seconds
-    await this.cache.set(tenantId as never, cacheKey, result, CACHE_TTL_SECONDS).catch(() => undefined);
-
-    return result;
   }
 
   private async getLast7DaysCalls(tenantId: string): Promise<Array<{ date: string; count: number }>> {
