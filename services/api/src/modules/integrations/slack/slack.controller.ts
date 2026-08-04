@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
 
 interface SlackEvent {
@@ -20,10 +21,10 @@ interface SlackEvent {
 export class SlackController {
   constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
+  @Public()
   @ApiOperation({ summary: "Slack Events API webhook." })
   @Post("webhook")
   async webhook(@Body() body: SlackEvent): Promise<Record<string, unknown>> {
-    // URL verification challenge
     if (body.type === "url_verification" && body.challenge) {
       return { challenge: body.challenge };
     }
@@ -79,6 +80,7 @@ export class SlackController {
     return { ok: true };
   }
 
+  @Public()
   @ApiOperation({ summary: "Check Slack bot status." })
   @Get("status")
   async status(): Promise<Record<string, unknown>> {
