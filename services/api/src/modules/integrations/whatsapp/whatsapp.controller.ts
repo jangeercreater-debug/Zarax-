@@ -1,7 +1,7 @@
-import { Controller, Post, Get, Body, Query } from "@nestjs/common";
+import { Controller, Post, Get, Body, Query, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
-import { Inject } from "@nestjs/common";
 
 const WA_API = "https://graph.facebook.com/v18.0";
 
@@ -22,6 +22,7 @@ interface WhatsAppMessage {
 export class WhatsAppController {
   constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
+  @Public()
   @ApiOperation({ summary: "WhatsApp webhook verification." })
   @Get("webhook")
   async verify(
@@ -36,6 +37,7 @@ export class WhatsAppController {
     return "Forbidden";
   }
 
+  @Public()
   @ApiOperation({ summary: "WhatsApp incoming message webhook." })
   @Post("webhook")
   async webhook(@Body() body: WhatsAppMessage): Promise<{ status: string }> {
@@ -92,7 +94,7 @@ export class WhatsAppController {
     return { status: "processed" };
   }
 
-  @ApiOperation({ summary: "Check WhatsApp connection status." })
+  @Public()
   @Get("status")
   async status(): Promise<Record<string, unknown>> {
     const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -104,12 +106,7 @@ export class WhatsAppController {
     await fetch(WA_API + "/" + phoneNumberId + "/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to,
-        type: "text",
-        text: { body: text },
-      }),
+      body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: text } }),
     }).catch(() => undefined);
   }
 }
