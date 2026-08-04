@@ -110,8 +110,6 @@ export class CallRepository {
     };
   }
 
-
-  
   async listActive(tenantId: TenantId): Promise<CallRecord[]> {
     const rows = await this.prisma.call.findMany({
       where: { tenantId, endedAt: null },
