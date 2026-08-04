@@ -288,7 +288,7 @@ export class VoiceSession {
     });
 
     await new Promise(r => setTimeout(r, delay));
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
 
     this.realtimeClient?.close();
     await this.startRealtimeSession().catch(async (err: Error) => {
