@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Inject } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { CurrentPrincipal, RequirePermission } from "@zarax/shared-auth";
+import { CurrentPrincipal, RequirePermission, Public } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
 import { PERMISSIONS, type Principal } from "@zarax/shared-types";
 
@@ -10,7 +10,7 @@ export class StripeController {
   constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
   @RequirePermission(PERMISSIONS.TENANT_MANAGE_BILLING)
-  @ApiOperation({ summary: "Create Stripe checkout session for plan upgrade." })
+  @ApiOperation({ summary: "Create Stripe checkout session." })
   @Post("checkout")
   async createCheckout(
     @CurrentPrincipal() principal: Principal,
@@ -44,6 +44,7 @@ export class StripeController {
     }
   }
 
+  @Public()
   @ApiOperation({ summary: "Stripe webhook for payment events." })
   @Post("webhook")
   async webhook(@Body() body: Record<string, unknown>): Promise<{ received: boolean }> {
@@ -66,7 +67,7 @@ export class StripeController {
     return { received: true };
   }
 
-  @RequirePermission(PERMISSIONS.TENANT_MANAGE_BILLING)
+  @Public()
   @ApiOperation({ summary: "Check Stripe connection status." })
   @Get("status")
   async status(): Promise<Record<string, unknown>> {
