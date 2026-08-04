@@ -18,7 +18,8 @@ import { OpenAiRealtimeClient } from '../audio/openai-realtime-client';
 type SessionState = 'connecting' | 'standby' | 'listening' | 'transcribing' | 'generating' | 'speaking' | 'ended';
 
 const OPENAI_SAMPLE_RATE = 24000;
-const MAX_RECONNECT_ATTEMPTS = 3;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const NOISE_GATE_THRESHOLD = 50;
 
 function isWakeWord(text: string): boolean {
   return /\bzarax\b/i.test(text);
@@ -27,6 +28,19 @@ function isWakeWord(text: string): boolean {
 function isStandbyPhrase(text: string): boolean {
   const t = text.toLowerCase().trim();
   return t.includes('stop for now') || t.includes('go to sleep') || t === 'stop' || t.startsWith('stop, ') || t.startsWith('stop.');
+}
+
+function applyNoiseGate(pcm: Buffer, threshold: number): Buffer {
+  const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2);
+  let energy = 0;
+  for (let i = 0; i < samples.length; i++) {
+    energy += Math.abs(samples[i] ?? 0);
+  }
+  const avgEnergy = energy / (samples.length || 1);
+  if (avgEnergy < threshold) {
+    return Buffer.alloc(pcm.length); // silence
+  }
+  return pcm;
 }
 
 export interface VoiceSessionOptions {
@@ -64,61 +78,85 @@ export class VoiceSession {
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private turnCount = 0;
   private reconnectAttempts = 0;
-  private transcriptLog: Array<{ role: string; text: string }> = [];
+  private transcriptLog: Array<{ role: string; text: string; ts: number }> = [];
+  private isSpeaking = false;
+  private metrics = {
+    firstResponseMs: 0,
+    avgLatencyMs: 0,
+    latencyCount: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    reconnects: 0,
+    errors: 0,
+  };
   readonly startedAt = Date.now();
 
   constructor(private readonly opts: VoiceSessionOptions) {}
 
   async start(): Promise<void> {
-    const token = this.mintAgentToken();
-    await this.room.connect(this.opts.livekitUrl, token);
+    try {
+      const token = this.mintAgentToken();
+      await this.room.connect(this.opts.livekitUrl, token);
 
-    this.opts.logger.log('VoiceSession: joined room', {
-      callId: this.opts.callId,
-      roomName: this.opts.roomName,
-    });
+      this.opts.logger.log('VoiceSession: joined room', {
+        callId: this.opts.callId,
+        roomName: this.opts.roomName,
+        mode: this.opts.openAiApiKey ? 'realtime' : 'legacy',
+      });
 
-    // Use OpenAI Realtime if API key available
-    if (this.opts.openAiApiKey) {
-      // Publisher at 24000 Hz for OpenAI Realtime (outputs 24kHz PCM16)
-      this.publisher = new LiveKitAudioPublisher(this.room, OPENAI_SAMPLE_RATE, this.opts.numChannels);
+      // Room disconnect handler
+      this.room.on(RoomEvent.Disconnected, () => {
+        if (this.state !== 'ended') {
+          this.opts.logger.warn('VoiceSession: room disconnected unexpectedly', { callId: this.opts.callId });
+          void this.end();
+        }
+      });
+
+      if (this.opts.openAiApiKey) {
+        this.publisher = new LiveKitAudioPublisher(this.room, OPENAI_SAMPLE_RATE, this.opts.numChannels);
+        await this.publisher.start();
+        await this.startRealtimeSession();
+        return;
+      }
+
+      this.publisher = new LiveKitAudioPublisher(this.room, this.opts.sampleRate, this.opts.numChannels);
       await this.publisher.start();
-      await this.startRealtimeSession();
-      return;
-    }
 
-    // Legacy pipeline: STT -> LLM -> TTS
-    this.publisher = new LiveKitAudioPublisher(this.room, this.opts.sampleRate, this.opts.numChannels);
-    await this.publisher.start();
+      this.wakeWordEnabled = Boolean((this.opts.agentConfig as Record<string, unknown>).wakeWordEnabled);
 
-    this.wakeWordEnabled = Boolean((this.opts.agentConfig as Record<string, unknown>).wakeWordEnabled);
+      if (this.wakeWordEnabled) {
+        this.state = 'standby';
+        await this.waitForCallerToJoin();
+        this.setupStt();
+        this.subscribeToCallerAudio();
+        return;
+      }
 
-    if (this.wakeWordEnabled) {
-      this.state = 'standby';
-      this.opts.logger.log('VoiceSession: wake-word mode - starting in standby', { callId: this.opts.callId });
       await this.waitForCallerToJoin();
+
+      if (this.opts.agentConfig.welcomeMessage) {
+        await this.speak(this.opts.agentConfig.welcomeMessage);
+      }
+
+      this.setupStt();
+      this.startListening();
       this.subscribeToCallerAudio();
-      return;
+    } catch (error) {
+      this.opts.logger.error('VoiceSession: start failed', {
+        callId: this.opts.callId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      await this.end();
     }
-
-    await this.waitForCallerToJoin();
-
-    if (this.opts.agentConfig.welcomeMessage) {
-      await this.speak(this.opts.agentConfig.welcomeMessage);
-    }
-
-    this.startListening();
-    this.subscribeToCallerAudio();
   }
 
   private async startRealtimeSession(): Promise<void> {
     await this.waitForCallerToJoin();
 
-    // Build enriched system prompt with Zarax personality
     const basePrompt = this.opts.agentConfig.systemPrompt ??
       'You are Zarax, a warm, intelligent female AI companion. Speak naturally like a real human friend.';
 
-    // Fetch memories and inject into prompt
+    // Fetch memories
     let memoryContext = '';
     try {
       const memoryUrl = process.env.API_SERVICE_URL ?? 'http://localhost:3000';
@@ -135,32 +173,31 @@ export class VoiceSession {
             .join('\n');
         }
       }
-    } catch {
-      // Memory is enhancement, not critical
-    }
-
-    const systemPrompt = basePrompt + memoryContext;
+    } catch { /* non-critical */ }
 
     this.realtimeClient = new OpenAiRealtimeClient({
       apiKey: this.opts.openAiApiKey!,
-      model: this.opts.openAiModel ?? 'gpt-4o-realtime-preview-2024-12-17',
+      model: this.opts.openAiModel ?? 'gpt-4o-realtime-preview-2025-06-03',
       voice: this.opts.openAiVoice ?? 'shimmer',
-      systemPrompt,
+      systemPrompt: basePrompt + memoryContext,
       callId: this.opts.callId,
     });
 
-    this.setupRealtimeEventHandlers();
+    this.setupRealtimeHandlers();
     this.realtimeClient.connect();
     this.subscribeToCallerAudioRealtime();
   }
 
-  private setupRealtimeEventHandlers(): void {
+  private setupRealtimeHandlers(): void {
     if (!this.realtimeClient) return;
 
-    this.realtimeClient.on('ready', () => {
+    this.realtimeClient.on('ready', (info: { setupLatencyMs: number }) => {
       this.state = 'listening';
       this.reconnectAttempts = 0;
-      this.opts.logger.log('VoiceSession: OpenAI Realtime ready', { callId: this.opts.callId });
+      this.opts.logger.log('VoiceSession: Realtime ready', {
+        callId: this.opts.callId,
+        setupLatencyMs: info.setupLatencyMs,
+      });
       if (this.opts.agentConfig.welcomeMessage) {
         this.realtimeClient?.sendText(this.opts.agentConfig.welcomeMessage);
       }
@@ -168,38 +205,67 @@ export class VoiceSession {
 
     this.realtimeClient.on('audio', async (pcm: Buffer) => {
       this.state = 'speaking';
+      this.isSpeaking = true;
       await this.publisher.push(pcm).catch(() => undefined);
     });
 
     this.realtimeClient.on('speak_done', async () => {
       await this.publisher.flush().catch(() => undefined);
+      this.isSpeaking = false;
       this.state = 'listening';
     });
 
     this.realtimeClient.on('speech_started', async () => {
-      if (this.state === 'speaking') {
+      // Barge-in: cancel current response, clear audio buffer
+      if (this.isSpeaking) {
         this.realtimeClient?.cancel();
         await this.publisher.stop().catch(() => undefined);
         await this.publisher.start().catch(() => undefined);
+        this.isSpeaking = false;
+        this.opts.logger.log('VoiceSession: barge-in', { callId: this.opts.callId });
       }
       this.state = 'listening';
     });
 
     this.realtimeClient.on('transcript', (text: string) => {
-      this.transcriptLog.push({ role: 'user', text });
-      this.opts.logger.log('VoiceSession: user said', { callId: this.opts.callId, text });
+      this.turnCount++;
+      this.transcriptLog.push({ role: 'user', text, ts: Date.now() });
+      this.opts.logger.log('VoiceSession: user said', { callId: this.opts.callId, turn: this.turnCount, text });
     });
 
-    this.realtimeClient.on('error', (err: Error) => {
-      this.opts.logger.error('VoiceSession: realtime error', {
+    this.realtimeClient.on('latency', (info: { firstResponseMs: number }) => {
+      this.metrics.firstResponseMs = info.firstResponseMs;
+      this.metrics.latencyCount++;
+      this.metrics.avgLatencyMs = Math.round(
+        ((this.metrics.avgLatencyMs * (this.metrics.latencyCount - 1)) + info.firstResponseMs) / this.metrics.latencyCount
+      );
+      this.opts.logger.log('VoiceSession: latency', {
         callId: this.opts.callId,
-        message: err.message,
+        firstResponseMs: info.firstResponseMs,
+        avgLatencyMs: this.metrics.avgLatencyMs,
       });
     });
 
-    this.realtimeClient.on('done', () => {
+    this.realtimeClient.on('usage', (usage: { inputTokens: number; outputTokens: number }) => {
+      this.metrics.totalInputTokens += usage.inputTokens;
+      this.metrics.totalOutputTokens += usage.outputTokens;
+    });
+
+    this.realtimeClient.on('error', (err: Error) => {
+      this.metrics.errors++;
+      this.opts.logger.error('VoiceSession: realtime error', {
+        callId: this.opts.callId,
+        message: err.message,
+        totalErrors: this.metrics.errors,
+      });
+    });
+
+    this.realtimeClient.on('done', (code: number) => {
       if (this.state === 'ended') return;
-      // Attempt reconnect
+      this.opts.logger.warn('VoiceSession: realtime disconnected', {
+        callId: this.opts.callId,
+        code,
+      });
       void this.attemptReconnect();
     });
   }
@@ -207,15 +273,14 @@ export class VoiceSession {
   private async attemptReconnect(): Promise<void> {
     if (this.state === 'ended') return;
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      this.opts.logger.error('VoiceSession: max reconnect attempts reached, ending session', {
-        callId: this.opts.callId,
-      });
-      this.state = 'ended';
+      this.opts.logger.error('VoiceSession: max reconnects reached, ending', { callId: this.opts.callId });
+      await this.end();
       return;
     }
 
     this.reconnectAttempts++;
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 5000);
+    this.metrics.reconnects++;
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 8000);
     this.opts.logger.log('VoiceSession: reconnecting', {
       callId: this.opts.callId,
       attempt: this.reconnectAttempts,
@@ -223,29 +288,36 @@ export class VoiceSession {
     });
 
     await new Promise(r => setTimeout(r, delay));
-    if ((this.state as string) === 'ended') return;
+    if (this.state === 'ended') return;
 
     this.realtimeClient?.close();
-    await this.startRealtimeSession().catch((err: Error) => {
+    await this.startRealtimeSession().catch(async (err: Error) => {
       this.opts.logger.error('VoiceSession: reconnect failed', {
         callId: this.opts.callId,
         message: err.message,
       });
+      await this.end();
     });
   }
 
   private subscribeToCallerAudioRealtime(): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.room.on(RoomEvent.TrackSubscribed, (track: any, _pub: unknown, participant: any) => {
-      if ((track.kind as number) !== TrackKind.KIND_AUDIO) return;
-      if ((participant.identity as string).startsWith('agent-')) return;
+    this.room.on(RoomEvent.TrackSubscribed, (track: unknown, _pub: unknown, participant: unknown) => {
+      const t = track as { kind: number };
+      const p = participant as { identity: string };
+      if (t.kind !== TrackKind.KIND_AUDIO) return;
+      if (p.identity.startsWith('agent-')) return;
 
-      const stream = new AudioStream(track, OPENAI_SAMPLE_RATE, this.opts.numChannels);
+      const stream = new AudioStream(track as never, OPENAI_SAMPLE_RATE, this.opts.numChannels);
       void (async () => {
         for await (const frame of stream as AsyncIterable<AudioFrame>) {
           if (this.state === 'ended') break;
-          const pcm = Buffer.from(frame.data.buffer);
-          this.realtimeClient?.sendAudio(pcm);
+          let pcm = Buffer.from(frame.data.buffer);
+          // Noise gate: suppress low-energy audio
+          pcm = applyNoiseGate(pcm, NOISE_GATE_THRESHOLD);
+          // Echo suppression: don't send audio back while speaking
+          if (!this.isSpeaking) {
+            this.realtimeClient?.sendAudio(pcm);
+          }
         }
       })();
     });
@@ -284,11 +356,8 @@ export class VoiceSession {
         if (event.isFinal) {
           this.clearSilenceTimer();
           this.interimText = '';
-          if (event.text.trim()) {
-            await this.handleFinalTranscript(event.text);
-          } else {
-            this.startListening();
-          }
+          if (event.text.trim()) await this.handleFinalTranscript(event.text);
+          else this.startListening();
         } else {
           this.interimText = event.text;
           this.resetSilenceTimer();
@@ -304,27 +373,26 @@ export class VoiceSession {
     });
 
     this.sttClient.onError((error: Error) => {
-      this.opts.logger.error('VoiceSession: STT error', {
-        callId: this.opts.callId,
-        message: error.message,
-      });
+      this.opts.logger.error('VoiceSession: STT error', { callId: this.opts.callId, message: error.message });
     });
 
     this.sttClient.connect();
   }
 
   private subscribeToCallerAudio(): void {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.room.on(RoomEvent.TrackSubscribed, (track: any, _publication: unknown, participant: any) => {
-      if ((track.kind as number) !== TrackKind.KIND_AUDIO) return;
-      if ((participant.identity as string).startsWith('agent-')) return;
+    this.room.on(RoomEvent.TrackSubscribed, (track: unknown, _pub: unknown, participant: unknown) => {
+      const t = track as { kind: number };
+      const p = participant as { identity: string };
+      if (t.kind !== TrackKind.KIND_AUDIO) return;
+      if (p.identity.startsWith('agent-')) return;
 
-      const audioStream = new AudioStream(track);
+      const audioStream = new AudioStream(track as never);
       void (async () => {
         for await (const frame of audioStream as AsyncIterable<AudioFrame>) {
           if (this.state === 'ended') break;
           if (this.state === 'listening' || this.state === 'transcribing' || this.state === 'standby') {
-            const pcm = Buffer.from(frame.data.buffer);
+            let pcm = Buffer.from(frame.data.buffer);
+            pcm = applyNoiseGate(pcm, NOISE_GATE_THRESHOLD);
             this.sttClient.sendAudio(pcm);
           }
         }
@@ -350,10 +418,7 @@ export class VoiceSession {
   }
 
   private clearSilenceTimer(): void {
-    if (this.silenceTimer) {
-      clearTimeout(this.silenceTimer);
-      this.silenceTimer = null;
-    }
+    if (this.silenceTimer) { clearTimeout(this.silenceTimer); this.silenceTimer = null; }
   }
 
   private async handleFinalTranscript(text: string): Promise<void> {
@@ -362,40 +427,32 @@ export class VoiceSession {
     if (this.wakeWordEnabled) {
       if (this.state === 'standby') {
         if (isWakeWord(text)) {
-          this.setupStt();
           await this.speak("Hi, I'm listening.");
           this.startListening();
-        } else {
-          this.state = 'standby';
-        }
+        } else { this.state = 'standby'; }
         return;
       }
-
       if (isStandbyPhrase(text)) {
         this.currentTts?.cancel();
-        this.currentTts = null;
         await this.speak("Okay, I'll stop for now. Say Zarax whenever you need me.");
         this.state = 'standby';
         return;
       }
-
       const cleaned = text.replace(/^zarax[,.]?\s*/i, '').trim();
       if (cleaned.length > 0) return this.handleFinalTranscript(cleaned);
     }
 
     this.state = 'generating';
     this.turnCount++;
-    this.transcriptLog.push({ role: 'user', text });
+    this.transcriptLog.push({ role: 'user', text, ts: Date.now() });
 
     let result;
     try {
       result = await this.opts.llmClient.submitTurn(this.opts.callId, this.opts.agentId, this.opts.tenantId, text);
     } catch (error) {
-      this.opts.logger.error('VoiceSession: LLM failed', {
-        callId: this.opts.callId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      await this.speak("I'm having trouble right now. Please try again in a moment.");
+      this.metrics.errors++;
+      this.opts.logger.error('VoiceSession: LLM failed', { callId: this.opts.callId, message: error instanceof Error ? error.message : String(error) });
+      await this.speak("I'm having trouble right now. Please try again.");
       this.startListening();
       return;
     }
@@ -406,7 +463,7 @@ export class VoiceSession {
       return;
     }
 
-    this.transcriptLog.push({ role: 'assistant', text: result.response });
+    this.transcriptLog.push({ role: 'assistant', text: result.response, ts: Date.now() });
     await this.speak(result.response);
     this.startListening();
   }
@@ -414,6 +471,7 @@ export class VoiceSession {
   private async speak(text: string): Promise<void> {
     if (this.state === 'ended') return;
     this.state = 'speaking';
+    this.isSpeaking = true;
 
     const tts = new TtsClient({
       ttsServiceUrl: this.opts.ttsServiceUrl,
@@ -431,18 +489,16 @@ export class VoiceSession {
       });
       tts.onDone(() => {
         if (this.currentTts === tts) this.currentTts = null;
+        this.isSpeaking = false;
         void this.publisher.flush().catch(() => undefined);
         resolve();
       });
       tts.onError((error: Error) => {
-        this.opts.logger.error('VoiceSession: TTS error', {
-          callId: this.opts.callId,
-          message: error.message,
-        });
+        this.opts.logger.error('VoiceSession: TTS error', { callId: this.opts.callId, message: error.message });
         if (this.currentTts === tts) this.currentTts = null;
+        this.isSpeaking = false;
         resolve();
       });
-
       tts.connect();
       tts.synthesize(text);
     });
@@ -456,12 +512,12 @@ export class VoiceSession {
       const finish = (): void => {
         if (settled) return;
         settled = true;
-        this.room.off(RoomEvent.ParticipantConnected, onConnected);
+        this.room.off(RoomEvent.ParticipantConnected, onJoin);
         clearTimeout(timer);
         resolve();
       };
-      const onConnected = (): void => finish();
-      this.room.on(RoomEvent.ParticipantConnected, onConnected);
+      const onJoin = (): void => finish();
+      this.room.on(RoomEvent.ParticipantConnected, onJoin);
     });
   }
 
@@ -477,26 +533,17 @@ export class VoiceSession {
     this.sttClient?.close();
 
     // Generate conversation summary
-    if (this.transcriptLog.length > 2) {
+    if (this.transcriptLog.length >= 2) {
       try {
         const summaryUrl = process.env.LLM_ORCHESTRATOR_URL ?? 'http://localhost:3006';
         const summaryToken = process.env.LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN ?? '';
         await fetch(summaryUrl + '/v1/summary', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Service-Account-Token': summaryToken,
-          },
-          body: JSON.stringify({
-            tenantId: this.opts.tenantId,
-            callId: this.opts.callId,
-            userId: '',
-          }),
+          headers: { 'Content-Type': 'application/json', 'X-Service-Account-Token': summaryToken },
+          body: JSON.stringify({ tenantId: this.opts.tenantId, callId: this.opts.callId, userId: '' }),
           signal: AbortSignal.timeout(10000),
         }).catch(() => undefined);
-      } catch {
-        // Summary is enhancement, not critical
-      }
+      } catch { /* non-critical */ }
     }
 
     try {
@@ -509,6 +556,7 @@ export class VoiceSession {
       turns: this.turnCount,
       durationMs: Date.now() - this.startedAt,
       transcriptEntries: this.transcriptLog.length,
+      metrics: this.metrics,
     });
   }
 
