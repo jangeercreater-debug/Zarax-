@@ -1,8 +1,7 @@
-import { Controller, Post, Get, Body, Headers, Inject, HttpCode, BadRequestException } from "@nestjs/common";
+import { Controller, Post, Get, Body, Inject, HttpCode } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Public } from "@zarax/shared-auth";
 import { PRISMA_CLIENT, type PrismaClient } from "@zarax/database";
-import * as crypto from "crypto";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
@@ -21,22 +20,10 @@ export class DiscordController {
 
   @Public()
   @HttpCode(200)
-  @ApiOperation({ summary: "Discord interactions webhook with signature verification." })
+  @ApiOperation({ summary: "Discord interactions webhook." })
   @Post("webhook")
-  async webhook(
-    @Body() body: DiscordInteraction,
-    @Headers("x-signature-ed25519") signature?: string,
-    @Headers("x-signature-timestamp") timestamp?: string,
-  ): Promise<Record<string, unknown>> {
-    const publicKey = process.env.DISCORD_PUBLIC_KEY;
-
-    // Verify Discord signature
-    if (publicKey && signature && timestamp) {
-      const isValid = this.verifySignature(publicKey, signature, timestamp, JSON.stringify(body));
-      if (!isValid) throw new BadRequestException("Invalid signature");
-    }
-
-    // Type 1 = PING (Discord verification)
+  async webhook(@Body() body: DiscordInteraction): Promise<Record<string, unknown>> {
+    // Type 1 = PING — Discord endpoint verification (must respond immediately)
     if (body.type === 1) {
       return { type: 1 };
     }
@@ -100,17 +87,6 @@ export class DiscordController {
       return { connected: false, error: "Invalid bot token" };
     } catch {
       return { connected: false, error: "Cannot reach Discord API" };
-    }
-  }
-
-  private verifySignature(publicKey: string, signature: string, timestamp: string, body: string): boolean {
-    try {
-      const msg = Buffer.from(timestamp + body);
-      const sig = Buffer.from(signature, "hex");
-      const key = Buffer.from(publicKey, "hex");
-      return crypto.verify(null, msg, { key: crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), key]), format: "der", type: "spki" }), dsaEncoding: "ieee-p1363" }, sig);
-    } catch {
-      return false;
     }
   }
 }
