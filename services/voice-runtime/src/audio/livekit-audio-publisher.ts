@@ -23,7 +23,9 @@ export class LiveKitAudioPublisher {
     if (this.published) return;
     const options = new TrackPublishOptions();
     options.source = TrackSource.SOURCE_MICROPHONE;
-    await this.room.localParticipant.publishTrack(this.track, options);
+    const localParticipant = this.room.localParticipant;
+    if (!localParticipant) throw new Error('LiveKitAudioPublisher: room not connected');
+    await localParticipant.publishTrack(this.track, options);
     this.published = true;
   }
 
@@ -74,7 +76,10 @@ export class LiveKitAudioPublisher {
 
   async stop(): Promise<void> {
     if (!this.published) return;
-    await this.room.localParticipant.unpublishTrack(this.track);
+    const localParticipant = this.room.localParticipant;
+    if (localParticipant) {
+      await localParticipant.unpublishTrack(this.track.sid);
+    }
     this.published = false;
     this.leftover = Buffer.alloc(0);
   }
