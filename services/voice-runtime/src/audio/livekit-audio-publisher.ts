@@ -1,11 +1,4 @@
-import {
-  AudioFrame,
-  AudioSource,
-  LocalAudioTrack,
-  LocalTrackPublication,
-  TrackPublishOptions,
-  TrackSource,
-} from '@livekit/rtc-node';
+import { AudioFrame, AudioSource, LocalAudioTrack, TrackPublishOptions, TrackSource } from '@livekit/rtc-node';
 import type { Room } from '@livekit/rtc-node';
 
 const FRAME_DURATION_MS = 20;
@@ -14,7 +7,6 @@ export class LiveKitAudioPublisher {
   private readonly source: AudioSource;
   private readonly track: LocalAudioTrack;
   private published = false;
-  private publication: LocalTrackPublication | null = null;
   private leftover: Buffer = Buffer.alloc(0);
   private writeQueue: Promise<void> = Promise.resolve();
 
@@ -29,13 +21,9 @@ export class LiveKitAudioPublisher {
 
   async start(): Promise<void> {
     if (this.published) return;
-    const localParticipant = this.room.localParticipant;
-    if (!localParticipant) {
-      throw new Error('LiveKitAudioPublisher: room.localParticipant is unavailable (room not connected?)');
-    }
     const options = new TrackPublishOptions();
     options.source = TrackSource.SOURCE_MICROPHONE;
-    this.publication = await localParticipant.publishTrack(this.track, options);
+    await this.room.localParticipant.publishTrack(this.track, options);
     this.published = true;
   }
 
@@ -53,6 +41,7 @@ export class LiveKitAudioPublisher {
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
     const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
 
+    // Combine leftover from previous push with new data
     const combined = this.leftover.length > 0 ? Buffer.concat([this.leftover, pcmBuffer]) : pcmBuffer;
 
     let offset = 0;
@@ -63,6 +52,7 @@ export class LiveKitAudioPublisher {
       await this.source.captureFrame(frame);
     }
 
+    // Save leftover bytes for next push
     this.leftover = combined.subarray(offset);
   }
 
@@ -72,6 +62,7 @@ export class LiveKitAudioPublisher {
     const samplesPerChannel = Math.floor((this.sampleRate * FRAME_DURATION_MS) / 1000);
     const bytesPerFrame = samplesPerChannel * this.numChannels * 2;
 
+    // Pad remaining bytes to full frame
     const padded = Buffer.alloc(bytesPerFrame);
     this.leftover.copy(padded);
     const int16 = new Int16Array(padded.buffer, padded.byteOffset, padded.length / 2);
@@ -83,11 +74,12 @@ export class LiveKitAudioPublisher {
 
   async stop(): Promise<void> {
     if (!this.published) return;
-    const localParticipant = this.room.localParticipant;
-    if (localParticipant && this.publication) {
-      await localParticipant.unpublishTrack(this.publication.sid);
-    }
+    await this.room.localParticipant.unpublishTrack(this.track);
     this.published = false;
-    this.publication = null;
+    this.leftover = Buffer.alloc(0);
+  }
+
+  get isPublishing(): boolean {
+    return this.published;
   }
 }
