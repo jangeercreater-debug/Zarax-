@@ -136,7 +136,7 @@ export class ConversationOrchestratorService {
     }
 
     if (isZarax && decision.reasoning.contextHint) {
-      history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}` }];
+      history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
     }
 
     if (decision.shouldStoreMemory) {
