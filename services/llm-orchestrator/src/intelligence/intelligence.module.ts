@@ -4,9 +4,10 @@ import { ReasoningEngine } from './reasoning-engine';
 import { DecisionEngine } from './decision-engine';
 import { CompanionEngine } from './companion-engine';
 import { HabitsTracker } from './habits-tracker';
+import { ConversationIntelligence } from './conversation-intelligence';
 
 @Module({
-  providers: [IntentDetector, ReasoningEngine, DecisionEngine, CompanionEngine, HabitsTracker],
-  exports: [DecisionEngine, CompanionEngine, HabitsTracker],
+  providers: [IntentDetector, ReasoningEngine, DecisionEngine, CompanionEngine, HabitsTracker, ConversationIntelligence],
+  exports: [IntentDetector, ReasoningEngine, DecisionEngine, CompanionEngine, HabitsTracker, ConversationIntelligence],
 })
 export class IntelligenceModule {}
