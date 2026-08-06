@@ -10,7 +10,7 @@ export interface CompanionContext {
 @Injectable()
 export class CompanionEngine {
 
-  getContext(conversationCount: number, userName?: string): CompanionContext {
+  buildContext(conversationCount: number, userName?: string): CompanionContext {
     const hour = new Date().getHours();
     const relationship = this.getRelationshipLevel(conversationCount);
     const greeting = this.buildGreeting(hour, relationship, userName);
@@ -18,6 +18,14 @@ export class CompanionEngine {
     const personalityBoost = this.getPersonalityBoost(relationship);
 
     return { greeting, moodHint, relationshipLevel: relationship, personalityBoost };
+  }
+
+  generateContextPrompt(ctx: CompanionContext): string {
+    return [
+      `[Companion] Relationship: ${ctx.relationshipLevel}`,
+      `[Mood] ${ctx.moodHint}`,
+      `[Personality] ${ctx.personalityBoost}`,
+    ].join('\n');
   }
 
   private getRelationshipLevel(count: number): 'new' | 'familiar' | 'close' | 'bestfriend' {
@@ -57,7 +65,6 @@ export class CompanionEngine {
       }
     }
 
-    // Night 9 PM - 5 AM
     switch (level) {
       case 'new': return `Hi${n}! Main Zarax... late night baat karne ka mann tha?`;
       case 'familiar': return `Hey${n}! So nahi rahe abhi tak?`;
@@ -75,7 +82,7 @@ export class CompanionEngine {
     if (hour >= 14 && hour < 17) return 'Afternoon — might be busy or tired from work. Be supportive.';
     if (hour >= 17 && hour < 20) return 'Evening — unwinding. Be relaxed and interested in their day.';
     if (hour >= 20 && hour < 23) return 'Night — calm, intimate energy. Good time for deeper conversations.';
-    return 'Late night — very gentle, soft. They might be lonely or can not sleep.';
+    return 'Late night — very gentle, soft. They might be lonely or cannot sleep.';
   }
 
   private getPersonalityBoost(level: string): string {
