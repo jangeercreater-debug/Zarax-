@@ -8,12 +8,12 @@ import type { TenantId } from '@zarax/shared-types';
 import { ConversationStateService } from '../conversation-state/conversation-state.service';
 import { RagClient } from '../rag-client/rag-client';
 import { MemoryClient } from '../memory-client/memory-client';
-import { DecisionEngine } from '../intelligence/decision-engine';
-import { CompanionEngine } from '../intelligence/companion-engine';
-import { HabitsTracker } from '../intelligence/habits-tracker';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
-import { ZARAX_SYSTEM_PROMPT } from './zarax-personality';
+import { IntentDetector } from '../intelligence/intent-detector';
+import { ReasoningEngine } from '../intelligence/reasoning-engine';
+import { DecisionEngine } from '../intelligence/decision-engine';
+import { ConversationIntelligence } from '../intelligence/conversation-intelligence';
 import {
   AGENT_RUNTIME_CONFIG_DEFAULTS,
   resolveAgentRuntimeConfig,
@@ -30,17 +30,6 @@ const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle
   detailed: 'Feel free to give thorough, detailed responses that fully address the question.',
 };
 
-const REMEMBER_TRIGGERS = [
-  'remember', 'yaad rakh', 'yaad rakho', 'yaad kar', 'save this',
-  'note this', 'store this', 'save kar', 'note kar', 'likh le',
-  'save karo', 'remember kar', 'memorize', 'dont forget', 'mat bhulna',
-];
-
-const MEMORY_EXTRACT_PROMPT = `Extract the memory from this user message. Respond ONLY with valid JSON:
-{"category": "contact|note|preference|task|fact", "key": "short identifier or null", "value": "the information to remember", "importance": 1-5}
-
-If no memory to extract, respond: {"skip": true}`;
-
 @Injectable()
 export class ConversationOrchestratorService {
   private readonly agentRepository: AgentRepository;
@@ -53,10 +42,11 @@ export class ConversationOrchestratorService {
     private readonly toolBroker: ToolCallBroker,
     private readonly ragClient: RagClient,
     private readonly memoryClient: MemoryClient,
+    private readonly intentDetector: IntentDetector,
+    private readonly reasoningEngine: ReasoningEngine,
     private readonly decisionEngine: DecisionEngine,
-    private readonly companionEngine: CompanionEngine,
-    private readonly habitsTracker: HabitsTracker,
-    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
+    private readonly conversationIntelligence: ConversationIntelligence,
+    @Inject(PRISMA_CLIENT) prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
     this.agentRepository = new AgentRepository(prisma);
@@ -72,19 +62,6 @@ export class ConversationOrchestratorService {
     const agent = await this.agentRepository.findByIdForTenantOrThrow(tenantId, agentId);
     const runtimeConfig = resolveAgentRuntimeConfig(agent.config);
 
-    const decision = this.decisionEngine.decide(userText);
-    this.logger.log('Intelligence: decision', {
-      callId,
-      intent: decision.intent,
-      confidence: decision.confidence,
-      strategy: decision.reasoning.strategy,
-    });
-
-    const isZarax = agent.name?.toLowerCase() === 'zarax';
-    const effectiveSystemPrompt = isZarax ? ZARAX_SYSTEM_PROMPT : runtimeConfig.systemPrompt;
-    const effectiveMaxTokens = isZarax ? decision.reasoning.maxTokens : runtimeConfig.maxTokens;
-    const effectiveTemperature = isZarax ? decision.reasoning.temperature : runtimeConfig.temperature;
-
     const provider = runtimeConfig.provider ?? AGENT_RUNTIME_CONFIG_DEFAULTS.provider;
     const model = runtimeConfig.model ?? AGENT_RUNTIME_CONFIG_DEFAULTS.model;
     const fallbackProviders = runtimeConfig.fallbackProviders ?? AGENT_RUNTIME_CONFIG_DEFAULTS.fallbackProviders;
@@ -92,55 +69,53 @@ export class ConversationOrchestratorService {
 
     let history = await this.conversationState.getHistory(tenantId, callId);
 
-    if (history.length === 0 && effectiveSystemPrompt) {
-      const styleHint = isZarax ? '' : RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
+    if (history.length === 0 && runtimeConfig.systemPrompt) {
+      const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
       const systemPrompt = styleHint
-        ? `${effectiveSystemPrompt}\n\n${styleHint}`
-        : effectiveSystemPrompt;
+        ? `${runtimeConfig.systemPrompt}\n\n${styleHint}`
+        : runtimeConfig.systemPrompt;
       history = [{ role: 'system', content: systemPrompt }];
-    }
-
-    // Companion context - time awareness, relationship, habits
-    if (isZarax) {
-      const companionCtx = this.companionEngine.buildContext(history.length);
-      const companionPrompt = this.companionEngine.generateContextPrompt(companionCtx);
-      history = [...history, { role: 'system', content: companionPrompt }];
-
-      try {
-        const habits = await this.habitsTracker.getHabits(tenantId, '');
-        const habitsPrompt = this.habitsTracker.generateHabitsPrompt(habits);
-        if (habitsPrompt) {
-          history = [...history, { role: 'system', content: habitsPrompt }];
-        }
-      } catch {
-        // Habits are enhancement, not critical
-      }
     }
 
     if (runtimeConfig.ragEnabled ?? AGENT_RUNTIME_CONFIG_DEFAULTS.ragEnabled) {
       history = await this.augmentWithRagContext(tenantId, history, userText);
     }
 
-    if (decision.shouldSearchMemory) {
-      try {
-        const memories = await this.memoryClient.recall(tenantId, '', userText);
-        if (memories.length > 0) {
-          const memoryContext = memories
-            .map((m) => `[${m.category}] ${m.key ? m.key + ': ' : ''}${JSON.stringify(m.value)}`)
-            .join('\n');
-          history = [...history, { role: 'system', content: `User memories:\n${memoryContext}` }];
-        }
-      } catch {
-        // Memory is enhancement, not critical
+    // Memory retrieval
+    try {
+      const memories = await this.memoryClient.recall(tenantId, '', userText);
+      if (memories.length > 0) {
+        const memoryContext = memories
+          .map((m) => `[${m.category}] ${m.key ? m.key + ': ' : ''}${JSON.stringify(m.value)}`)
+          .join('\n');
+        history = [...history, { role: 'system', content: `User memories:\n${memoryContext}` }];
       }
+    } catch {
+      // Memory is enhancement, not critical
     }
 
-    if (isZarax && decision.reasoning.contextHint) {
+    // Intent detection + reasoning
+    const intent = this.intentDetector.detect(userText);
+    const decision = this.decisionEngine.decide(intent, userText);
+
+    if (decision.reasoning.contextHint) {
       history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
     }
 
-    if (decision.shouldStoreMemory) {
-      void this.detectAndStoreMemory(tenantId, callId, userText).catch(() => undefined);
+    // Conversation intelligence: topic tracking, question memory, repetition prevention
+    const contextHint = this.conversationIntelligence.processUserTurn(callId, userText);
+    if (contextHint) {
+      history = [...history, { role: 'system', content: contextHint }];
+    }
+
+    const antiRepetitionHint = this.conversationIntelligence.getAntiRepetitionHint(callId);
+    if (antiRepetitionHint) {
+      history = [...history, { role: 'system', content: antiRepetitionHint }];
+    }
+
+    const followUpHint = this.conversationIntelligence.getFollowUpHint(callId);
+    if (followUpHint) {
+      history = [...history, { role: 'system', content: followUpHint }];
     }
 
     history = [...history, { role: 'user', content: userText }];
@@ -153,9 +128,9 @@ export class ConversationOrchestratorService {
       agentId,
       provider,
       model,
-      fallbackProviders,
-      temperature: effectiveTemperature,
-      maxTokens: effectiveMaxTokens,
+      fallbackProviders: fallbackProviders,
+      temperature: decision.reasoning.temperature ?? runtimeConfig.temperature,
+      maxTokens: decision.reasoning.maxTokens ?? runtimeConfig.maxTokens,
       maxIterations,
       history,
       tools,
@@ -163,48 +138,14 @@ export class ConversationOrchestratorService {
 
     await this.conversationState.saveHistory(tenantId, callId, updatedHistory);
 
-    return { response: finalText, shouldEndCall, endCallReason };
-  }
+    // Track assistant response for repetition prevention
+    this.conversationIntelligence.processAssistantTurn(callId, finalText);
 
-  private async detectAndStoreMemory(tenantId: TenantId, callId: string, userText: string): Promise<void> {
-    const lower = userText.toLowerCase();
-    const shouldExtract = REMEMBER_TRIGGERS.some((t) => lower.includes(t));
-    if (!shouldExtract) return;
-
-    try {
-      const provider = this.aiRegistry.get('anthropic');
-      const extraction = await provider.complete({
-        model: 'claude-sonnet-4-5-20241022',
-        messages: [
-          { role: 'system', content: MEMORY_EXTRACT_PROMPT },
-          { role: 'user', content: userText },
-        ],
-        temperature: 0.1,
-        maxTokens: 200,
-      });
-
-      const parsed = JSON.parse(extraction.content) as Record<string, unknown>;
-      if (parsed.skip) return;
-
-      await this.prisma.userMemory.create({
-        data: {
-          userId: '',
-          tenantId,
-          category: String(parsed.category ?? 'note'),
-          key: parsed.key ? String(parsed.key) : null,
-          value: parsed.value as never,
-          source: 'voice',
-          callId,
-          importance: Number(parsed.importance ?? 1),
-        },
-      });
-
-      this.logger.log('Memory auto-stored from voice', { callId, category: parsed.category });
-    } catch (error) {
-      this.logger.warn('Memory extraction failed', {
-        message: error instanceof Error ? error.message : String(error),
-      });
+    if (shouldEndCall) {
+      this.conversationIntelligence.cleanup(callId);
     }
+
+    return { response: finalText, shouldEndCall, endCallReason };
   }
 
   private async augmentWithRagContext(
