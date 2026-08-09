@@ -94,7 +94,7 @@ export class ConversationOrchestratorService {
 
     // Intent detection + reasoning
     const intent = this.intentDetector.detect(userText);
-    const decision = this.decisionEngine.decide(intent.intent, userText);
+    const decision = this.decisionEngine.decide(intent.intent);
 
     if (decision.reasoning.contextHint) {
       history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
