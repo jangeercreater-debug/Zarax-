@@ -43,7 +43,6 @@ export class ConversationOrchestratorService {
     private readonly ragClient: RagClient,
     private readonly memoryClient: MemoryClient,
     private readonly intentDetector: IntentDetector,
-    private readonly reasoningEngine: ReasoningEngine,
     private readonly decisionEngine: DecisionEngine,
     private readonly conversationIntelligence: ConversationIntelligence,
     @Inject(PRISMA_CLIENT) prisma: PrismaClient,
@@ -96,7 +95,7 @@ export class ConversationOrchestratorService {
 
     // Intent detection + reasoning
     const intent = this.intentDetector.detect(userText);
-    const decision = this.decisionEngine.decide(intent, userText);
+    const decision = this.decisionEngine.decide(intent);
 
     if (decision.reasoning.contextHint) {
       history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
