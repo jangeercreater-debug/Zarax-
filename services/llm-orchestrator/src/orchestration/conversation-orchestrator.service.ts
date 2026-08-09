@@ -11,7 +11,6 @@ import { MemoryClient } from '../memory-client/memory-client';
 import { ToolCatalogClient } from '../tool-catalog/tool-catalog.client';
 import { ToolCallBroker } from '../tool-broker/tool-call-broker';
 import { IntentDetector } from '../intelligence/intent-detector';
-import { ReasoningEngine } from '../intelligence/reasoning-engine';
 import { DecisionEngine } from '../intelligence/decision-engine';
 import { ConversationIntelligence } from '../intelligence/conversation-intelligence';
 import {
@@ -95,7 +94,7 @@ export class ConversationOrchestratorService {
 
     // Intent detection + reasoning
     const intent = this.intentDetector.detect(userText);
-    const decision = this.decisionEngine.decide(intent);
+    const decision = this.decisionEngine.decide(intent.intent, userText);
 
     if (decision.reasoning.contextHint) {
       history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
