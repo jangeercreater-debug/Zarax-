@@ -15,6 +15,8 @@ import { DecisionEngine } from '../intelligence/decision-engine';
 import { ConversationIntelligence } from '../intelligence/conversation-intelligence';
 import { CompanionEngine } from '../intelligence/companion-engine';
 import { HabitsTracker } from '../intelligence/habits-tracker';
+import { EmotionDetector } from '../intelligence/emotion-detector';
+import { EmotionalAdaptationEngine } from '../intelligence/emotional-adaptation';
 import { ZARAX_SYSTEM_PROMPT } from './zarax-personality';
 import {
   AGENT_RUNTIME_CONFIG_DEFAULTS,
@@ -32,15 +34,8 @@ const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle
   detailed: 'Feel free to give thorough, detailed responses that fully address the question.',
 };
 
-// Always available regardless of the agent's configured enabledTools — remembering
-// what the caller tells her is core to Zarax's identity (Phase 5: Persistent Memory
-// Engine), not an opt-in integration like a CRM or calendar tool.
 const ALWAYS_ON_TOOLS = ['remember_memory'];
 
-/** True for the built-in Zarax companion agent — matched by name since that's the
- * only per-agent signal available (no dedicated "isZarax" flag on the Agent model).
- * Every other agent keeps using whatever systemPrompt is configured in the database,
- * unaffected. */
 function isZaraxAgent(agentName: string): boolean {
   return agentName.trim().toLowerCase() === 'zarax';
 }
@@ -62,6 +57,8 @@ export class ConversationOrchestratorService {
     private readonly conversationIntelligence: ConversationIntelligence,
     private readonly companionEngine: CompanionEngine,
     private readonly habitsTracker: HabitsTracker,
+    private readonly emotionDetector: EmotionDetector,
+    private readonly emotionalAdaptation: EmotionalAdaptationEngine,
     @Inject(PRISMA_CLIENT) prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
@@ -88,9 +85,6 @@ export class ConversationOrchestratorService {
     const isFirstTurn = history.length === 0;
 
     if (isFirstTurn) {
-      // Zarax's personality is hardcoded and always wins over whatever systemPrompt
-      // happens to be saved on the agent row — she is not configurable per-tenant.
-      // Any other agent keeps using its own configured systemPrompt unchanged.
       const basePrompt = isZarax ? ZARAX_SYSTEM_PROMPT : runtimeConfig.systemPrompt;
       if (basePrompt) {
         const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
@@ -106,7 +100,6 @@ export class ConversationOrchestratorService {
           const habitsPrompt = this.habitsTracker.generateHabitsPrompt(habits);
           if (habitsPrompt) history = [...history, { role: 'system', content: habitsPrompt }];
         } catch (error) {
-          // Companion/habits context is enrichment, not critical to answering the call.
           this.logger.warn('Companion/habits context failed; continuing without it', {
             message: error instanceof Error ? error.message : String(error),
           });
@@ -118,8 +111,6 @@ export class ConversationOrchestratorService {
       history = await this.augmentWithRagContext(tenantId, history, userText);
     }
 
-    // Persistent memory recall (Phase 5) — real semantic + ranked recall via
-    // services/api's internal/memory endpoint, not a stub.
     try {
       const memories = await this.memoryClient.recall(tenantId, '', userText);
       if (memories.length > 0) {
@@ -132,7 +123,6 @@ export class ConversationOrchestratorService {
       // Memory is enhancement, not critical
     }
 
-    // Intent detection + reasoning
     const intent = this.intentDetector.detect(userText);
     const decision = this.decisionEngine.decide(intent.intent);
 
@@ -140,7 +130,14 @@ export class ConversationOrchestratorService {
       history = [...history, { role: 'system', content: `[Reasoning hint] ${decision.reasoning.contextHint}\n[Pacing] ${decision.reasoning.pacingHint}` }];
     }
 
-    // Conversation intelligence: topic tracking, question memory, repetition prevention
+    // Emotional Intelligence (Phase 6): detect the caller's emotional state from
+    // their own words and adapt tone/pacing/energy/word-choice/empathy accordingly.
+    const emotionResult = this.emotionDetector.detect(userText);
+    const emotionPrompt = this.emotionalAdaptation.generatePrompt(emotionResult);
+    if (emotionPrompt) {
+      history = [...history, { role: 'system', content: emotionPrompt }];
+    }
+
     const contextHint = this.conversationIntelligence.processUserTurn(callId, userText);
     if (contextHint) {
       history = [...history, { role: 'system', content: contextHint }];
@@ -176,7 +173,6 @@ export class ConversationOrchestratorService {
 
     await this.conversationState.saveHistory(tenantId, callId, updatedHistory);
 
-    // Track assistant response for repetition prevention
     this.conversationIntelligence.processAssistantTurn(callId, finalText);
 
     if (shouldEndCall) {
@@ -214,9 +210,6 @@ export class ConversationOrchestratorService {
       const enabled = catalog.filter((tool) => wantedNames.has(tool.name));
       return enabled.length > 0 ? enabled : undefined;
     } catch (error) {
-      // Falling back to no tools keeps the conversation working even if
-      // tool-executor is briefly unreachable — losing remember_memory for one
-      // turn is far better than failing the whole call.
       this.logger.warn('Tool catalog lookup failed; continuing without tools', {
         message: error instanceof Error ? error.message : String(error),
       });
@@ -325,4 +318,4 @@ export class ConversationOrchestratorService {
 
     return { finalText, shouldEndCall, endCallReason, updatedHistory: history };
   }
-  }
+}
