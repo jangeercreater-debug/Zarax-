@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Emotion, EmotionIntensity, EmotionResult } from './emotion-detector';
+import type { Emotion, EmotionResult } from './emotion-detector';
 
 export interface AdaptationProfile {
   voiceTone: string;
