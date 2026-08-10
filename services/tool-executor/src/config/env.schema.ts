@@ -15,6 +15,9 @@ export const toolExecutorEnvSchema = baseEnvSchema
   .merge(
     z.object({
       INTERNAL_SERVICE_TOKEN: z.string().min(32),
+      // Used by the remember_memory tool to persist memories via services/api's
+      // internal/memory endpoint (Phase 5 — Persistent Memory Engine).
+      API_SERVICE_URL: z.string().url(),
     }),
   );
 
