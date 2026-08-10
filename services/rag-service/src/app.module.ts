@@ -14,9 +14,8 @@ import { HealthModule, MetricsModule } from '@zarax/shared-observability';
 
 import { ragServiceEnvSchema } from './config/env.schema';
 import { KnowledgeBaseModule } from './knowledge-base/knowledge-base.module';
+import { EmbeddingsModule } from './embeddings/embeddings.module';
 
-// See services/api/src/app.module.ts for why these instances are built directly from
-// process.env here rather than via DI — the same reasoning applies to every service.
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 
 @Module({
@@ -48,6 +47,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     }),
     PrismaClientModule.forRoot(),
     KnowledgeBaseModule,
+    EmbeddingsModule,
   ],
 })
 export class AppModule {}
