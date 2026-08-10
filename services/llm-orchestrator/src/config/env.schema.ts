@@ -24,6 +24,10 @@ export const llmOrchestratorEnvSchema = baseEnvSchema
       // RAG is optional — an empty string disables it (see RagClient.search).
       RAG_SERVICE_URL: z.string().optional().default(''),
       RAG_SERVICE_ACCOUNT_TOKEN: z.string().optional().default(''),
+      // Used by MemoryClient to recall/store persistent memories mid-conversation via
+      // services/api's internal/memory endpoint (Phase 5 — Persistent Memory Engine).
+      API_SERVICE_URL: z.string().url(),
+      INTERNAL_SERVICE_TOKEN: z.string().min(32),
     }),
   );
 
