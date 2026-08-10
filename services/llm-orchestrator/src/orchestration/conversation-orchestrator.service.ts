@@ -13,6 +13,9 @@ import { ToolCallBroker } from '../tool-broker/tool-call-broker';
 import { IntentDetector } from '../intelligence/intent-detector';
 import { DecisionEngine } from '../intelligence/decision-engine';
 import { ConversationIntelligence } from '../intelligence/conversation-intelligence';
+import { CompanionEngine } from '../intelligence/companion-engine';
+import { HabitsTracker } from '../intelligence/habits-tracker';
+import { ZARAX_SYSTEM_PROMPT } from './zarax-personality';
 import {
   AGENT_RUNTIME_CONFIG_DEFAULTS,
   resolveAgentRuntimeConfig,
@@ -29,6 +32,19 @@ const RESPONSE_STYLE_HINTS: Record<NonNullable<AgentRuntimeConfig['responseStyle
   detailed: 'Feel free to give thorough, detailed responses that fully address the question.',
 };
 
+// Always available regardless of the agent's configured enabledTools — remembering
+// what the caller tells her is core to Zarax's identity (Phase 5: Persistent Memory
+// Engine), not an opt-in integration like a CRM or calendar tool.
+const ALWAYS_ON_TOOLS = ['remember_memory'];
+
+/** True for the built-in Zarax companion agent — matched by name since that's the
+ * only per-agent signal available (no dedicated "isZarax" flag on the Agent model).
+ * Every other agent keeps using whatever systemPrompt is configured in the database,
+ * unaffected. */
+function isZaraxAgent(agentName: string): boolean {
+  return agentName.trim().toLowerCase() === 'zarax';
+}
+
 @Injectable()
 export class ConversationOrchestratorService {
   private readonly agentRepository: AgentRepository;
@@ -44,6 +60,8 @@ export class ConversationOrchestratorService {
     private readonly intentDetector: IntentDetector,
     private readonly decisionEngine: DecisionEngine,
     private readonly conversationIntelligence: ConversationIntelligence,
+    private readonly companionEngine: CompanionEngine,
+    private readonly habitsTracker: HabitsTracker,
     @Inject(PRISMA_CLIENT) prisma: PrismaClient,
     @Inject(ZARAX_LOGGER) private readonly logger: ZaraxLogger,
   ) {
@@ -59,6 +77,7 @@ export class ConversationOrchestratorService {
   ): Promise<ConversationTurnResponseDto> {
     const agent = await this.agentRepository.findByIdForTenantOrThrow(tenantId, agentId);
     const runtimeConfig = resolveAgentRuntimeConfig(agent.config);
+    const isZarax = isZaraxAgent(agent.name);
 
     const provider = runtimeConfig.provider ?? AGENT_RUNTIME_CONFIG_DEFAULTS.provider;
     const model = runtimeConfig.model ?? AGENT_RUNTIME_CONFIG_DEFAULTS.model;
@@ -66,20 +85,41 @@ export class ConversationOrchestratorService {
     const maxIterations = runtimeConfig.maxToolIterations ?? AGENT_RUNTIME_CONFIG_DEFAULTS.maxToolIterations;
 
     let history = await this.conversationState.getHistory(tenantId, callId);
+    const isFirstTurn = history.length === 0;
 
-    if (history.length === 0 && runtimeConfig.systemPrompt) {
-      const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
-      const systemPrompt = styleHint
-        ? `${runtimeConfig.systemPrompt}\n\n${styleHint}`
-        : runtimeConfig.systemPrompt;
-      history = [{ role: 'system', content: systemPrompt }];
+    if (isFirstTurn) {
+      // Zarax's personality is hardcoded and always wins over whatever systemPrompt
+      // happens to be saved on the agent row — she is not configurable per-tenant.
+      // Any other agent keeps using its own configured systemPrompt unchanged.
+      const basePrompt = isZarax ? ZARAX_SYSTEM_PROMPT : runtimeConfig.systemPrompt;
+      if (basePrompt) {
+        const styleHint = RESPONSE_STYLE_HINTS[runtimeConfig.responseStyle ?? 'balanced'];
+        const systemPrompt = styleHint ? `${basePrompt}\n\n${styleHint}` : basePrompt;
+        history = [{ role: 'system', content: systemPrompt }];
+      }
+
+      if (isZarax) {
+        try {
+          const habits = await this.habitsTracker.getHabits(tenantId, '');
+          const companion = this.companionEngine.buildContext(habits.totalConversations);
+          history = [...history, { role: 'system', content: this.companionEngine.generateContextPrompt(companion) }];
+          const habitsPrompt = this.habitsTracker.generateHabitsPrompt(habits);
+          if (habitsPrompt) history = [...history, { role: 'system', content: habitsPrompt }];
+        } catch (error) {
+          // Companion/habits context is enrichment, not critical to answering the call.
+          this.logger.warn('Companion/habits context failed; continuing without it', {
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
     }
 
     if (runtimeConfig.ragEnabled ?? AGENT_RUNTIME_CONFIG_DEFAULTS.ragEnabled) {
       history = await this.augmentWithRagContext(tenantId, history, userText);
     }
 
-    // Memory retrieval
+    // Persistent memory recall (Phase 5) — real semantic + ranked recall via
+    // services/api's internal/memory endpoint, not a stub.
     try {
       const memories = await this.memoryClient.recall(tenantId, '', userText);
       if (memories.length > 0) {
@@ -166,11 +206,22 @@ export class ConversationOrchestratorService {
   }
 
   private async resolveEnabledTools(runtimeConfig: AgentRuntimeConfig) {
-    if (!runtimeConfig.enabledTools || runtimeConfig.enabledTools.length === 0) return undefined;
+    const configuredNames = runtimeConfig.enabledTools ?? [];
+    const wantedNames = new Set([...configuredNames, ...ALWAYS_ON_TOOLS]);
 
-    const catalog = await this.toolCatalog.getAvailableTools();
-    const enabled = catalog.filter((tool) => runtimeConfig.enabledTools?.includes(tool.name));
-    return enabled.length > 0 ? enabled : undefined;
+    try {
+      const catalog = await this.toolCatalog.getAvailableTools();
+      const enabled = catalog.filter((tool) => wantedNames.has(tool.name));
+      return enabled.length > 0 ? enabled : undefined;
+    } catch (error) {
+      // Falling back to no tools keeps the conversation working even if
+      // tool-executor is briefly unreachable — losing remember_memory for one
+      // turn is far better than failing the whole call.
+      this.logger.warn('Tool catalog lookup failed; continuing without tools', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
   }
 
   private async runCompletionLoop(params: {
@@ -274,4 +325,4 @@ export class ConversationOrchestratorService {
 
     return { finalText, shouldEndCall, endCallReason, updatedHistory: history };
   }
-}
+  }
