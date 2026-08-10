@@ -6,6 +6,7 @@ import type { ToolExecutorEnv } from '../config/env.schema';
 import { endCallTool } from './handlers/end-call.tool';
 import { getCurrentDatetimeTool } from './handlers/get-current-datetime.tool';
 import { sendWebhookNotificationTool } from './handlers/send-webhook-notification.tool';
+import { rememberMemoryTool } from './handlers/remember-memory.tool';
 import { ToolRegistryService } from './registry/tool-registry.service';
 import { ToolsController } from './tools.controller';
 
@@ -34,5 +35,6 @@ export class ToolsModule implements OnModuleInit {
     this.registry.register(getCurrentDatetimeTool);
     this.registry.register(endCallTool);
     this.registry.register(sendWebhookNotificationTool);
+    this.registry.register(rememberMemoryTool);
   }
 }
