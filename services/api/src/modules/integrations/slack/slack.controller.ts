@@ -56,14 +56,13 @@ export class SlackController {
 
       const callId = "slack-" + channel + "-" + Date.now();
 
-      const res = await fetch(llmUrl + "/v1/conversation/turn", {
+      const res = await fetch(llmUrl + "/conversations/" + callId + "/turns", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "X-Service-Account-Token": llmToken,
-          "X-Tenant-Id": tenant.id,
         },
-        body: JSON.stringify({ callId, agentId: agent.id, tenantId: tenant.id, text: userText }),
+        body: JSON.stringify({ agentId: agent.id, tenantId: tenant.id, text: userText }),
         signal: AbortSignal.timeout(15000),
       });
 
