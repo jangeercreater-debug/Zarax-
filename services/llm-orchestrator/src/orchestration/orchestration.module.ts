@@ -8,10 +8,18 @@ import { ToolCatalogModule } from '../tool-catalog/tool-catalog.module';
 import { IntelligenceModule } from '../intelligence/intelligence.module';
 import { ConversationController } from './conversation.controller';
 import { ConversationOrchestratorService } from './conversation-orchestrator.service';
+import { IntelligenceContextService } from './intelligence-context.service';
 
 @Module({
-  imports: [ConversationStateModule, ToolBrokerModule, ToolCatalogModule, RagClientModule, MemoryClientModule, IntelligenceModule],
+  imports: [
+    ConversationStateModule,
+    ToolBrokerModule,
+    ToolCatalogModule,
+    RagClientModule,
+    MemoryClientModule,
+    IntelligenceModule,
+  ],
   controllers: [ConversationController],
-  providers: [ConversationOrchestratorService],
+  providers: [ConversationOrchestratorService, IntelligenceContextService],
 })
 export class OrchestrationModule {}
