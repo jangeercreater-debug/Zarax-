@@ -5,10 +5,14 @@ import type { Principal } from '@zarax/shared-types';
 import { ConversationTurnDto } from './dto/conversation-turn.dto';
 import type { ConversationTurnResponseDto } from './dto/conversation-turn-response.dto';
 import { ConversationOrchestratorService } from './conversation-orchestrator.service';
+import { IntelligenceContextService } from './intelligence-context.service';
 
 @Controller('conversations')
 export class ConversationController {
-  constructor(private readonly orchestrator: ConversationOrchestratorService) {}
+  constructor(
+    private readonly orchestrator: ConversationOrchestratorService,
+    private readonly intelligenceContext: IntelligenceContextService,
+  ) {}
 
   /**
    * Called once per user utterance (a finalized STT transcript), or by "Test Agent"
@@ -30,5 +34,25 @@ export class ConversationController {
   ): Promise<ConversationTurnResponseDto> {
     const tenantId = resolveEffectiveTenantId(principal, dto.tenantId);
     return this.orchestrator.handleTurn(tenantId, callId, dto.agentId, dto.text);
+  }
+
+  /**
+   * Called by voice-runtime's GPT-Realtime path before each response.create —
+   * returns a compact intelligence context prompt (emotion, pacing, memory recall,
+   * conversation hints) without making any LLM call, targeting <200 ms so it does
+   * not materially affect the user-perceived first-response latency.
+   * The voice-session injects the returned contextPrompt as a system
+   * conversation_item into the live Realtime session, then fires response.create.
+   * This makes Phases 3–6 intelligence (personality, emotion, memory, conversation
+   * continuity) work on every Realtime turn — not just at session start.
+   */
+  @Post(':callId/intelligence-context')
+  async getIntelligenceContext(
+    @CurrentPrincipal() principal: Principal,
+    @Param('callId') callId: string,
+    @Body() dto: ConversationTurnDto,
+  ): Promise<{ contextPrompt: string; shouldInject: boolean }> {
+    const tenantId = resolveEffectiveTenantId(principal, dto.tenantId);
+    return this.intelligenceContext.buildContext(tenantId, callId, dto.agentId, dto.text);
   }
 }
