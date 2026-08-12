@@ -21,26 +21,24 @@ const OPENAI_SAMPLE_RATE = 24000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const NOISE_GATE_THRESHOLD = 50;
 
+const LLM_ORCHESTRATOR_URL = process.env.LLM_ORCHESTRATOR_URL ?? 'http://localhost:3006';
+const LLM_ORCHESTRATOR_TOKEN = process.env.LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN ?? '';
+
 function isWakeWord(text: string): boolean {
   return /\bzarax\b/i.test(text);
 }
 
 function isStandbyPhrase(text: string): boolean {
   const t = text.toLowerCase().trim();
-  return t.includes('stop for now') || t.includes('go to sleep') || t === 'stop' || t.startsWith('stop, ') || t.startsWith('stop.');
+  return t.includes('stop for now') || t.includes('go to sleep') || t === 'stop';
 }
 
 function applyNoiseGate(pcm: Buffer, threshold: number): Buffer {
   const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2);
   let energy = 0;
-  for (let i = 0; i < samples.length; i++) {
-    energy += Math.abs(samples[i] ?? 0);
-  }
+  for (let i = 0; i < samples.length; i++) energy += Math.abs(samples[i] ?? 0);
   const avgEnergy = energy / (samples.length || 1);
-  if (avgEnergy < threshold) {
-    return Buffer.alloc(pcm.length); // silence
-  }
-  return pcm;
+  return avgEnergy < threshold ? Buffer.alloc(pcm.length) : pcm;
 }
 
 export interface VoiceSessionOptions {
@@ -78,6 +76,7 @@ export class VoiceSession {
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private turnCount = 0;
   private reconnectAttempts = 0;
+  private lastTranscript = '';
   private transcriptLog: Array<{ role: string; text: string; ts: number }> = [];
   private isSpeaking = false;
   private metrics = {
@@ -104,7 +103,6 @@ export class VoiceSession {
         mode: this.opts.openAiApiKey ? 'realtime' : 'legacy',
       });
 
-      // Room disconnect handler
       this.room.on(RoomEvent.Disconnected, () => {
         if (this.state !== 'ended') {
           this.opts.logger.warn('VoiceSession: room disconnected unexpectedly', { callId: this.opts.callId });
@@ -133,11 +131,7 @@ export class VoiceSession {
       }
 
       await this.waitForCallerToJoin();
-
-      if (this.opts.agentConfig.welcomeMessage) {
-        await this.speak(this.opts.agentConfig.welcomeMessage);
-      }
-
+      if (this.opts.agentConfig.welcomeMessage) await this.speak(this.opts.agentConfig.welcomeMessage);
       this.setupStt();
       this.startListening();
       this.subscribeToCallerAudio();
@@ -156,13 +150,13 @@ export class VoiceSession {
     const basePrompt = this.opts.agentConfig.systemPrompt ??
       'You are Zarax, a warm, intelligent female AI companion. Speak naturally like a real human friend.';
 
-    // Fetch memories
+    // Fetch memories for initial system prompt enrichment
     let memoryContext = '';
     try {
       const memoryUrl = process.env.API_SERVICE_URL ?? 'http://localhost:3000';
       const memoryToken = process.env.API_INTERNAL_SERVICE_TOKEN ?? '';
-      const res = await fetch(memoryUrl + '/v1/memory/search?q=user+preferences', {
-        headers: { 'Authorization': 'Bearer ' + memoryToken, 'X-Tenant-Id': this.opts.tenantId },
+      const res = await fetch(`${memoryUrl}/v1/internal/memory/search?tenantId=${encodeURIComponent(this.opts.tenantId)}&userId=&q=user+preferences&limit=5`, {
+        headers: { 'X-Internal-Token': memoryToken },
         signal: AbortSignal.timeout(3000),
       }).catch(() => null);
       if (res?.ok) {
@@ -216,7 +210,6 @@ export class VoiceSession {
     });
 
     this.realtimeClient.on('speech_started', async () => {
-      // Barge-in: cancel current response, clear audio buffer
       if (this.isSpeaking) {
         this.realtimeClient?.cancel();
         await this.publisher.stop().catch(() => undefined);
@@ -227,10 +220,70 @@ export class VoiceSession {
       this.state = 'listening';
     });
 
+    // speech_stopped fires when VAD detects end of utterance.
+    // This is the key hook: we fetch per-turn intelligence context from
+    // llm-orchestrator and inject it BEFORE triggering OpenAI's response —
+    // making Phases 3–6 (personality, emotion, memory, conversation) work
+    // on every turn, not just at session start.
+    this.realtimeClient.on('speech_stopped', async () => {
+      if (this.state === 'ended') return;
+
+      const transcript = this.lastTranscript;
+      if (!transcript.trim()) {
+        this.realtimeClient?.triggerResponse();
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${LLM_ORCHESTRATOR_URL}/conversations/${encodeURIComponent(this.opts.callId)}/intelligence-context`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Service-Account-Token': LLM_ORCHESTRATOR_TOKEN,
+            },
+            body: JSON.stringify({
+              agentId: this.opts.agentId,
+              tenantId: this.opts.tenantId,
+              text: transcript,
+            }),
+            signal: AbortSignal.timeout(3000),
+          },
+        );
+
+        if (res.ok) {
+          const data = await res.json() as { contextPrompt?: string; shouldInject?: boolean };
+          if (data.shouldInject && data.contextPrompt) {
+            this.realtimeClient?.injectContext(data.contextPrompt);
+            this.opts.logger.log('VoiceSession: intelligence context injected', {
+              callId: this.opts.callId,
+              promptLength: data.contextPrompt.length,
+            });
+          }
+        }
+      } catch (error) {
+        // Intelligence injection failure must never block the response —
+        // the user gets a response either way, just without this turn's hints.
+        this.opts.logger.warn('VoiceSession: intelligence context fetch failed (continuing without it)', {
+          callId: this.opts.callId,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+
+      this.realtimeClient?.triggerResponse();
+    });
+
     this.realtimeClient.on('transcript', (text: string) => {
+      // Keep the latest transcript so speech_stopped can use it for intelligence context.
+      this.lastTranscript = text;
       this.turnCount++;
       this.transcriptLog.push({ role: 'user', text, ts: Date.now() });
-      this.opts.logger.log('VoiceSession: user said', { callId: this.opts.callId, turn: this.turnCount, text });
+      this.opts.logger.log('VoiceSession: user said', {
+        callId: this.opts.callId,
+        turn: this.turnCount,
+        text,
+      });
     });
 
     this.realtimeClient.on('latency', (info: { firstResponseMs: number }) => {
@@ -262,10 +315,7 @@ export class VoiceSession {
 
     this.realtimeClient.on('done', (code: number) => {
       if (this.state === 'ended') return;
-      this.opts.logger.warn('VoiceSession: realtime disconnected', {
-        callId: this.opts.callId,
-        code,
-      });
+      this.opts.logger.warn('VoiceSession: realtime disconnected', { callId: this.opts.callId, code });
       void this.attemptReconnect();
     });
   }
@@ -288,7 +338,7 @@ export class VoiceSession {
     });
 
     await new Promise(r => setTimeout(r, delay));
-    if ((this.state as string) === 'ended') return;
+    if (this.state === 'ended') return;
 
     this.realtimeClient?.close();
     await this.startRealtimeSession().catch(async (err: Error) => {
@@ -312,9 +362,7 @@ export class VoiceSession {
         for await (const frame of stream as AsyncIterable<AudioFrame>) {
           if (this.state === 'ended') break;
           let pcm = Buffer.from(frame.data.buffer);
-          // Noise gate: suppress low-energy audio
           pcm = applyNoiseGate(pcm, NOISE_GATE_THRESHOLD);
-          // Echo suppression: don't send audio back while speaking
           if (!this.isSpeaking) {
             this.realtimeClient?.sendAudio(pcm);
           }
@@ -401,7 +449,7 @@ export class VoiceSession {
   }
 
   private startListening(): void {
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
     this.state = 'listening';
     this.interimText = '';
   }
@@ -422,7 +470,7 @@ export class VoiceSession {
   }
 
   private async handleFinalTranscript(text: string): Promise<void> {
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
 
     if (this.wakeWordEnabled) {
       if (this.state === 'standby') {
@@ -451,7 +499,10 @@ export class VoiceSession {
       result = await this.opts.llmClient.submitTurn(this.opts.callId, this.opts.agentId, this.opts.tenantId, text);
     } catch (error) {
       this.metrics.errors++;
-      this.opts.logger.error('VoiceSession: LLM failed', { callId: this.opts.callId, message: error instanceof Error ? error.message : String(error) });
+      this.opts.logger.error('VoiceSession: LLM failed', {
+        callId: this.opts.callId,
+        message: error instanceof Error ? error.message : String(error),
+      });
       await this.speak("I'm having trouble right now. Please try again.");
       this.startListening();
       return;
@@ -469,7 +520,7 @@ export class VoiceSession {
   }
 
   private async speak(text: string): Promise<void> {
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
     this.state = 'speaking';
     this.isSpeaking = true;
 
@@ -522,7 +573,7 @@ export class VoiceSession {
   }
 
   async end(): Promise<void> {
-    if (this.state === 'ended') return;
+    if ((this.state as string) === 'ended') return;
     this.state = 'ended';
 
     this.clearSilenceTimer();
@@ -532,12 +583,10 @@ export class VoiceSession {
     this.realtimeClient = null;
     this.sttClient?.close();
 
-    // Generate conversation summary
     if (this.transcriptLog.length >= 2) {
       try {
-        const summaryUrl = process.env.LLM_ORCHESTRATOR_URL ?? 'http://localhost:3006';
         const summaryToken = process.env.LLM_ORCHESTRATOR_SERVICE_ACCOUNT_TOKEN ?? '';
-        await fetch(summaryUrl + '/v1/summary', {
+        await fetch(`${LLM_ORCHESTRATOR_URL}/v1/summary`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Service-Account-Token': summaryToken },
           body: JSON.stringify({ tenantId: this.opts.tenantId, callId: this.opts.callId, userId: '' }),
@@ -561,6 +610,6 @@ export class VoiceSession {
   }
 
   get isActive(): boolean {
-    return this.state !== 'ended';
+    return (this.state as string) !== 'ended';
   }
 }
