@@ -9,6 +9,17 @@ export interface RealtimeOptions {
   callId: string;
 }
 
+/**
+ * Production-grade OpenAI Realtime WebSocket client.
+ *
+ * Key design decision — auto-response is DISABLED (`create_response: false`).
+ * voice-session instead calls our intelligence-context endpoint after every
+ * speech_stopped event to get per-turn emotion/memory/pacing hints, injects
+ * them as a system conversation_item via injectContext(), then fires
+ * triggerResponse() to start the actual completion.  This gives all of our
+ * Phase 3-6 intelligence (personality, emotion, memory, conversation continuity)
+ * on every Realtime turn — not just at session start.
+ */
 export class OpenAiRealtimeClient extends EventEmitter {
   private ws: WebSocket | null = null;
   private cancelled = false;
@@ -32,11 +43,8 @@ export class OpenAiRealtimeClient extends EventEmitter {
 
     this.ws.on('open', () => {
       this.sendSessionUpdate();
-      // Keep-alive ping every 25 seconds
       this.pingInterval = setInterval(() => {
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          this.ws.ping();
-        }
+        if (this.ws?.readyState === WebSocket.OPEN) this.ws.ping();
       }, 25000);
     });
 
@@ -47,17 +55,11 @@ export class OpenAiRealtimeClient extends EventEmitter {
       } catch { /* ignore malformed */ }
     });
 
-    this.ws.on('pong', () => {
-      // Connection alive
-    });
-
+    this.ws.on('pong', () => { /* keep-alive confirmed */ });
     this.ws.on('error', (err: Error) => { this.emit('error', err); });
-
     this.ws.on('close', (code: number) => {
       this.clearPing();
-      if (!this.cancelled) {
-        this.emit('done', code);
-      }
+      if (!this.cancelled) this.emit('done', code);
     });
   }
 
@@ -77,7 +79,9 @@ export class OpenAiRealtimeClient extends EventEmitter {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 600,
-          create_response: true,
+          // CRITICAL: false so voice-session can inject intelligence context
+          // before every turn instead of OpenAI auto-responding immediately.
+          create_response: false,
         },
       },
     }));
@@ -89,18 +93,16 @@ export class OpenAiRealtimeClient extends EventEmitter {
     const type = ev.type as string;
 
     if (type === 'response.audio.delta') {
-      // Measure time to first audio
       if (this.firstAudioTime === 0) {
         this.firstAudioTime = Date.now();
-        const firstResponseMs = this.firstAudioTime - this.connectTime;
-        this.emit('latency', { firstResponseMs });
+        this.emit('latency', { firstResponseMs: this.firstAudioTime - this.connectTime });
       }
       const delta = ev.delta as string;
       if (delta) this.emit('audio', Buffer.from(delta, 'base64'));
     }
 
     if (type === 'response.audio.done') {
-      this.firstAudioTime = 0; // Reset for next response
+      this.firstAudioTime = 0;
       this.emit('speak_done');
     }
 
@@ -109,12 +111,16 @@ export class OpenAiRealtimeClient extends EventEmitter {
       this.emit('speech_started');
     }
 
+    // speech_stopped fires when VAD detects end of utterance —
+    // this is when voice-session fetches intelligence context and calls
+    // triggerResponse() after injecting it.
     if (type === 'input_audio_buffer.speech_stopped') {
       this.emit('speech_stopped');
     }
 
     if (type === 'conversation.item.input_audio_transcription.completed') {
-      this.emit('transcript', (ev.transcript as string) ?? '');
+      const transcript = (ev.transcript as string) ?? '';
+      this.emit('transcript', transcript);
     }
 
     if (type === 'response.text.delta') {
@@ -134,18 +140,11 @@ export class OpenAiRealtimeClient extends EventEmitter {
 
     if (type === 'error') {
       const errObj = ev.error as Record<string, unknown> | undefined;
-      this.emit('error', new Error(
-        (errObj?.message as string) ?? JSON.stringify(ev.error)
-      ));
+      this.emit('error', new Error((errObj?.message as string) ?? JSON.stringify(ev.error)));
     }
 
-    if (type === 'session.created') {
-      this.emit('session_created');
-    }
-
-    if (type === 'rate_limits.updated') {
-      this.emit('rate_limits', ev.rate_limits);
-    }
+    if (type === 'session.created') this.emit('session_created');
+    if (type === 'rate_limits.updated') this.emit('rate_limits', ev.rate_limits);
   }
 
   sendAudio(pcm: Buffer): void {
@@ -163,12 +162,34 @@ export class OpenAiRealtimeClient extends EventEmitter {
       type: 'conversation.item.create',
       item: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] },
     }));
-    this.ws.send(JSON.stringify({ type: 'response.create' }));
+    this.triggerResponse();
   }
 
-  commitAudioBuffer(): void {
+  /**
+   * Injects a system-level context message into the live Realtime session.
+   * Called by voice-session after fetching per-turn intelligence hints from
+   * llm-orchestrator's /intelligence-context endpoint — before triggerResponse().
+   */
+  injectContext(systemText: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !systemText.trim()) return;
+    this.ws.send(JSON.stringify({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'system',
+        content: [{ type: 'input_text', text: systemText }],
+      },
+    }));
+  }
+
+  /**
+   * Manually triggers a Realtime response after context injection.
+   * Must be called after injectContext() (or directly for text turns).
+   */
+  triggerResponse(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ type: 'input_audio_buffer.commit' }));
+    this.firstAudioTime = 0;
+    this.ws.send(JSON.stringify({ type: 'response.create' }));
   }
 
   cancel(): void {
