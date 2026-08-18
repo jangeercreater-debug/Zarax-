@@ -1,5 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
+import { Injectable } from '@nestjs/common';
 import type { TenantId } from '@zarax/shared-types';
 
 import { MemoryClient } from '../memory-client/memory-client';
@@ -17,7 +16,6 @@ export interface IntelligenceContextResult {
 @Injectable()
 export class IntelligenceContextService {
   constructor(
-    @Inject(PRISMA_CLIENT) private readonly _prisma: PrismaClient,
     private readonly memoryClient: MemoryClient,
     private readonly intentDetector: IntentDetector,
     private readonly decisionEngine: DecisionEngine,
