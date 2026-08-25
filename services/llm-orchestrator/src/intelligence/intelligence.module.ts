@@ -7,15 +7,33 @@ import { HabitsTracker } from './habits-tracker';
 import { ConversationIntelligence } from './conversation-intelligence';
 import { EmotionDetector } from './emotion-detector';
 import { EmotionalAdaptationEngine } from './emotional-adaptation';
+import { ProactiveCompanionEngine } from './proactive-companion';
+import { LanguageDetector } from './language-detector';
 
 @Module({
   providers: [
-    IntentDetector, ReasoningEngine, DecisionEngine, CompanionEngine,
-    HabitsTracker, ConversationIntelligence, EmotionDetector, EmotionalAdaptationEngine,
+    IntentDetector,
+    ReasoningEngine,
+    DecisionEngine,
+    CompanionEngine,
+    HabitsTracker,
+    ConversationIntelligence,
+    EmotionDetector,
+    EmotionalAdaptationEngine,
+    ProactiveCompanionEngine,
+    LanguageDetector,
   ],
   exports: [
-    IntentDetector, ReasoningEngine, DecisionEngine, CompanionEngine,
-    HabitsTracker, ConversationIntelligence, EmotionDetector, EmotionalAdaptationEngine,
+    IntentDetector,
+    ReasoningEngine,
+    DecisionEngine,
+    CompanionEngine,
+    HabitsTracker,
+    ConversationIntelligence,
+    EmotionDetector,
+    EmotionalAdaptationEngine,
+    ProactiveCompanionEngine,
+    LanguageDetector,
   ],
 })
 export class IntelligenceModule {}
