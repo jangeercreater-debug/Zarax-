@@ -7,6 +7,7 @@ import { DecisionEngine } from '../intelligence/decision-engine';
 import { ConversationIntelligence } from '../intelligence/conversation-intelligence';
 import { EmotionDetector } from '../intelligence/emotion-detector';
 import { EmotionalAdaptationEngine } from '../intelligence/emotional-adaptation';
+import { LanguageDetector } from '../intelligence/language-detector';
 
 export interface IntelligenceContextResult {
   contextPrompt: string;
@@ -22,6 +23,7 @@ export class IntelligenceContextService {
     private readonly conversationIntelligence: ConversationIntelligence,
     private readonly emotionDetector: EmotionDetector,
     private readonly emotionalAdaptation: EmotionalAdaptationEngine,
+    private readonly languageDetector: LanguageDetector,
   ) {}
 
   async buildContext(
@@ -32,19 +34,31 @@ export class IntelligenceContextService {
   ): Promise<IntelligenceContextResult> {
     const parts: string[] = [];
 
-    // 1. Emotion detection + adaptation (local, ~0ms)
+    // Phase 6: Emotion detection + adaptation (local, ~0ms)
     const emotion = this.emotionDetector.detect(userText);
     const emotionPrompt = this.emotionalAdaptation.generatePrompt(emotion);
     if (emotionPrompt) parts.push(emotionPrompt);
 
-    // 2. Intent + pacing (local, ~0ms)
+    // Phase 4: Intent + pacing (local, ~0ms)
     const intent = this.intentDetector.detect(userText);
     const decision = this.decisionEngine.decide(intent.intent);
     if (decision.reasoning.pacingHint) {
       parts.push(`[Pacing] ${decision.reasoning.pacingHint}`);
     }
 
-    // 3. Conversation intelligence (local, ~0ms)
+    // Phase 8: Language lock (local, ~0ms)
+    const langResult = this.languageDetector.detectAndLock(callId, userText);
+    if (langResult.language !== 'unknown') {
+      parts.push(langResult.instruction);
+    }
+
+    // Phase 8: Night mode (local, ~0ms)
+    const hour = new Date().getHours();
+    if (hour >= 22 || hour < 5) {
+      parts.push('[Night mode] Speak softly and gently. Lower energy. Be warm and intimate.');
+    }
+
+    // Phase 4: Conversation intelligence (local, ~0ms)
     const topicHint = this.conversationIntelligence.processUserTurn(callId, userText);
     if (topicHint) parts.push(topicHint);
 
@@ -54,7 +68,7 @@ export class IntelligenceContextService {
     const followUp = this.conversationIntelligence.getFollowUpHint(callId);
     if (followUp) parts.push(followUp);
 
-    // 4. Persistent memory recall (~50-150ms)
+    // Phase 5: Persistent memory recall (~50-150ms — worth it)
     try {
       const memories = await this.memoryClient.recall(tenantId, '', userText, 3);
       if (memories.length > 0) {
