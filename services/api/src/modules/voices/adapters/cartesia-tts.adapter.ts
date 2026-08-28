@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { NotFoundError } from '@zarax/shared-errors';
 
 import { DEFAULT_AUDIO_CONTRACT, VOICE_ERROR_CODES, type SynthesizeRequest } from '../dto/voice.types';
 import type { TTSAdapter } from './tts-adapter.interface';
@@ -10,21 +9,14 @@ const PREVIEW_MODEL_ID = 'sonic-2';
 const PREVIEW_MAX_CHARS = 200;
 const SAMPLE_PREVIEW_TEXT = 'Hi! I am Zarax. How can I help you today?';
 
-/**
- * Phase 1: Cartesia TTS Adapter
- *
- * Wraps Cartesia's REST /tts/bytes endpoint behind the TTSAdapter interface.
- * The Voice Engine never imports Cartesia directly — only this adapter does.
- *
- * NOTE: This adapter calls Cartesia's REST endpoint directly.
- * The existing tts-service uses the same Cartesia API for the live voice
- * pipeline (via WebSocket streaming) — this adapter is separate and used
- * only for Voice Registry preview and on-demand synthesis from the API.
- * Do NOT replace or modify the existing CartesiaStreamSession in tts-service.
- *
- * Phase 2 will add: OpenSourceTTSAdapter
- * Phase 7 will add: ZaraxTTSAdapter
- */
+class VoiceError extends Error {
+  voiceErrorCode: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.voiceErrorCode = code;
+  }
+}
+
 @Injectable()
 export class CartesiaTTSAdapter implements TTSAdapter {
   readonly providerId = 'cartesia';
@@ -38,9 +30,7 @@ export class CartesiaTTSAdapter implements TTSAdapter {
 
   async synthesize(request: SynthesizeRequest, providerVoiceId: string): Promise<Buffer> {
     if (!this.isConfigured()) {
-      const err = new NotFoundError('TTS provider');
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED;
-      throw err;
+      throw new VoiceError('TTS provider not configured', VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED);
     }
 
     const format = { ...DEFAULT_AUDIO_CONTRACT, ...request.outputFormat };
@@ -58,9 +48,7 @@ export class CartesiaTTSAdapter implements TTSAdapter {
 
   async preview(providerVoiceId: string, sampleText?: string): Promise<Buffer> {
     if (!this.isConfigured()) {
-      const err = new NotFoundError('TTS provider');
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED;
-      throw err;
+      throw new VoiceError('TTS provider not configured', VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED);
     }
 
     const text = (sampleText ?? SAMPLE_PREVIEW_TEXT).slice(0, PREVIEW_MAX_CHARS);
@@ -76,20 +64,12 @@ export class CartesiaTTSAdapter implements TTSAdapter {
     try {
       const res = await fetch('https://api.cartesia.ai/voices', {
         method: 'GET',
-        headers: {
-          'X-API-Key': this.apiKey,
-          'Cartesia-Version': this.apiVersion,
-        },
+        headers: { 'X-API-Key': this.apiKey, 'Cartesia-Version': this.apiVersion },
         signal: AbortSignal.timeout(5000),
       });
-      return res.ok
-        ? { healthy: true }
-        : { healthy: false, reason: `Cartesia API returned ${res.status}` };
+      return res.ok ? { healthy: true } : { healthy: false, reason: `Cartesia API returned ${res.status}` };
     } catch (error) {
-      return {
-        healthy: false,
-        reason: error instanceof Error ? error.message : 'Cartesia unreachable',
-      };
+      return { healthy: false, reason: error instanceof Error ? error.message : 'Cartesia unreachable' };
     }
   }
 
@@ -112,11 +92,7 @@ export class CartesiaTTSAdapter implements TTSAdapter {
           model_id: modelId,
           transcript: text,
           voice: { mode: 'id', id: providerVoiceId },
-          output_format: {
-            container: 'wav',
-            encoding: 'pcm_s16le',
-            sample_rate: sampleRate,
-          },
+          output_format: { container: 'wav', encoding: 'pcm_s16le', sample_rate: sampleRate },
         }),
         signal: AbortSignal.timeout(15000),
       });
@@ -124,17 +100,13 @@ export class CartesiaTTSAdapter implements TTSAdapter {
       this.logger.error('CartesiaTTSAdapter: network error', {
         message: error instanceof Error ? error.message : String(error),
       });
-      const err = new Error('Cartesia synthesis failed: network error');
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED;
-      throw err;
+      throw new VoiceError('Cartesia synthesis failed: network error', VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED);
     }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       this.logger.error('CartesiaTTSAdapter: HTTP error', { status: response.status, body });
-      const err = new Error(`Cartesia synthesis failed: HTTP ${response.status}`);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED;
-      throw err;
+      throw new VoiceError(`Cartesia synthesis failed: HTTP ${response.status}`, VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED);
     }
 
     const arrayBuffer = await response.arrayBuffer();
