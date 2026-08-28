@@ -1,6 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
-import { ForbiddenError, NotFoundError } from '@zarax/shared-errors';
 import { randomUUID } from 'node:crypto';
 
 import { CartesiaTTSAdapter } from './adapters/cartesia-tts.adapter';
@@ -12,18 +11,16 @@ import {
   type VoiceRecord,
 } from './dto/voice.types';
 
-/**
- * Phase 1: Zarax Voice Engine
- *
- * Central orchestrator for all voice operations.
- * The application layer (controllers, agents) talks ONLY to VoiceEngineService,
- * never directly to CartesiaTTSAdapter or any specific provider.
- *
- * Architecture:
- *   Controller → VoiceEngineService → TTSAdapter → Provider
- *
- * Future phases replace/extend the adapter — no changes needed here.
- */
+class VoiceError extends Error {
+  voiceErrorCode: string;
+  status: number;
+  constructor(message: string, code: string, status = 400) {
+    super(message);
+    this.voiceErrorCode = code;
+    this.status = status;
+  }
+}
+
 @Injectable()
 export class VoiceEngineService {
   private readonly logger = new Logger(VoiceEngineService.name);
@@ -33,13 +30,6 @@ export class VoiceEngineService {
     private readonly ttsAdapter: CartesiaTTSAdapter,
   ) {}
 
-  // ─── Voice Registry ────────────────────────────────────────────────────────
-
-  /**
-   * List voices available to the tenant.
-   * Returns global system voices + tenant-specific voices.
-   * Private voices from other tenants are NEVER returned.
-   */
   async listVoices(tenantId: string, filters?: {
     gender?: string;
     language?: string;
@@ -59,14 +49,12 @@ export class VoiceEngineService {
     if (filters?.language) where.language = { contains: filters.language, mode: 'insensitive' };
     if (filters?.voiceType) where.voiceType = filters.voiceType.toUpperCase();
     if (filters?.search) {
-      where.AND = [
-        {
-          OR: [
-            { name: { contains: filters.search, mode: 'insensitive' } },
-            { description: { contains: filters.search, mode: 'insensitive' } },
-          ],
-        },
-      ];
+      where.AND = [{
+        OR: [
+          { name: { contains: filters.search, mode: 'insensitive' } },
+          { description: { contains: filters.search, mode: 'insensitive' } },
+        ],
+      }];
     }
 
     const voices = await this.prisma.voice.findMany({
@@ -77,10 +65,6 @@ export class VoiceEngineService {
     return voices as unknown as VoiceRecord[];
   }
 
-  /**
-   * Get a single voice by ID.
-   * Enforces tenant isolation — tenants cannot access each other's private voices.
-   */
   async getVoice(tenantId: string, voiceId: string): Promise<VoiceRecord> {
     const voice = await this.prisma.voice.findFirst({
       where: {
@@ -93,17 +77,12 @@ export class VoiceEngineService {
     });
 
     if (!voice) {
-      const err = new NotFoundError('Voice', voiceId);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_NOT_FOUND;
-      throw err;
+      throw new VoiceError(`Voice '${voiceId}' was not found.`, VOICE_ERROR_CODES.VOICE_NOT_FOUND, 404);
     }
 
     return voice as unknown as VoiceRecord;
   }
 
-  /**
-   * Create a tenant-owned voice in the registry.
-   */
   async createVoice(tenantId: string, data: {
     name: string;
     description?: string;
@@ -155,10 +134,6 @@ export class VoiceEngineService {
     return voice as unknown as VoiceRecord;
   }
 
-  /**
-   * Update a tenant-owned voice.
-   * System voices (tenantId = null) cannot be modified by tenants.
-   */
   async updateVoice(tenantId: string, voiceId: string, data: Partial<{
     name: string;
     description: string;
@@ -181,9 +156,11 @@ export class VoiceEngineService {
     });
 
     if (!existing) {
-      const err = new ForbiddenError('Cannot modify this voice — it may be a system voice or belong to another tenant.');
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_ACCESS_DENIED;
-      throw err;
+      throw new VoiceError(
+        'Cannot modify this voice — it may be a system voice or belong to another tenant.',
+        VOICE_ERROR_CODES.VOICE_ACCESS_DENIED,
+        403,
+      );
     }
 
     const update: Record<string, unknown> = {};
@@ -212,19 +189,17 @@ export class VoiceEngineService {
     return updated as unknown as VoiceRecord;
   }
 
-  /**
-   * Soft-delete a voice by setting status to INACTIVE.
-   * System voices cannot be deleted by tenants.
-   */
   async deleteVoice(tenantId: string, voiceId: string): Promise<void> {
     const existing = await this.prisma.voice.findFirst({
       where: { id: voiceId, tenantId },
     });
 
     if (!existing) {
-      const err = new ForbiddenError('Cannot delete this voice — it may be a system voice or belong to another tenant.');
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_ACCESS_DENIED;
-      throw err;
+      throw new VoiceError(
+        'Cannot delete this voice — it may be a system voice or belong to another tenant.',
+        VOICE_ERROR_CODES.VOICE_ACCESS_DENIED,
+        403,
+      );
     }
 
     await this.prisma.voice.update({
@@ -235,28 +210,23 @@ export class VoiceEngineService {
     this.logger.log('VoiceEngineService: voice deactivated', { tenantId, voiceId });
   }
 
-  // ─── Synthesis + Preview ───────────────────────────────────────────────────
-
-  /**
-   * Synthesize audio for a voice. Used by agent calls and direct API.
-   */
   async synthesize(tenantId: string, request: SynthesizeRequest): Promise<SynthesizeResponse> {
     const voice = await this.getVoice(tenantId, request.voiceId);
 
     if (voice.status !== 'ACTIVE') {
-      const err = new ForbiddenError(`Voice '${voice.name}' is not active.`);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_INACTIVE;
-      throw err;
+      throw new VoiceError(`Voice '${voice.name}' is not active.`, VOICE_ERROR_CODES.VOICE_INACTIVE, 400);
     }
 
     if (!voice.providerVoiceId) {
-      const err = new Error(`Voice '${voice.name}' has no provider voice ID configured.`);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_MODEL_NOT_CONFIGURED;
-      throw err;
+      throw new VoiceError(
+        `Voice '${voice.name}' has no provider voice ID configured.`,
+        VOICE_ERROR_CODES.VOICE_MODEL_NOT_CONFIGURED,
+        400,
+      );
     }
 
     const requestId = request.requestId ?? randomUUID();
-    const audioBuffer = await this.ttsAdapter.synthesize({ ...request, requestId }, voice.providerVoiceId);
+    await this.ttsAdapter.synthesize({ ...request, requestId }, voice.providerVoiceId);
 
     return {
       requestId,
@@ -268,31 +238,24 @@ export class VoiceEngineService {
     };
   }
 
-  /**
-   * Preview a voice with a short sample clip.
-   * Returns raw PCM audio buffer.
-   */
   async previewVoice(tenantId: string, voiceId: string, sampleText?: string): Promise<Buffer> {
     const voice = await this.getVoice(tenantId, voiceId);
 
     if (voice.status !== 'ACTIVE') {
-      const err = new ForbiddenError(`Voice '${voice.name}' is not active.`);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_INACTIVE;
-      throw err;
+      throw new VoiceError(`Voice '${voice.name}' is not active.`, VOICE_ERROR_CODES.VOICE_INACTIVE, 400);
     }
 
     if (!voice.providerVoiceId) {
-      const err = new Error(`Voice '${voice.name}' has no provider voice ID — preview unavailable.`);
-      (err as Record<string, unknown>)['voiceErrorCode'] = VOICE_ERROR_CODES.VOICE_PREVIEW_UNAVAILABLE;
-      throw err;
+      throw new VoiceError(
+        `Voice '${voice.name}' has no provider voice ID — preview unavailable.`,
+        VOICE_ERROR_CODES.VOICE_PREVIEW_UNAVAILABLE,
+        400,
+      );
     }
 
     return this.ttsAdapter.preview(voice.providerVoiceId, sampleText);
   }
 
-  /**
-   * Check Voice Engine health — returns adapter status.
-   */
   async healthCheck(): Promise<{ provider: string; configured: boolean; healthy?: boolean; reason?: string }> {
     if (!this.ttsAdapter.isConfigured()) {
       return {
@@ -305,10 +268,6 @@ export class VoiceEngineService {
     return { provider: this.ttsAdapter.providerId, configured: true, ...result };
   }
 
-  /**
-   * Validate a voice ID is accessible to tenant.
-   * Used by agent builder to validate voiceId field.
-   */
   async validateVoice(tenantId: string, voiceId: string): Promise<{ valid: boolean; voice?: VoiceRecord }> {
     try {
       const voice = await this.getVoice(tenantId, voiceId);
