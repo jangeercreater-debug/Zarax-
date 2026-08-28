@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/workflows", label: "Workflows", icon: Workflow },
   { href: "/telephony", label: "Telephony", icon: Phone },
   { href: "/knowledge-base", label: "Knowledge Base", icon: Library },
+  { href: "/voices", label: "Voice Library", icon: Mic2 },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/audit-logs", label: "Audit Logs", icon: Shield },
   { href: "/integrations", label: "Integrations", icon: Puzzle },
