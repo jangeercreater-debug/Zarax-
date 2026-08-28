@@ -34,6 +34,7 @@ import { InternalModule } from './modules/internal/internal.module';
 import { TelephonyModule } from './modules/telephony/telephony.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { VoicesModule } from './modules/voices/voices.module';
 
 const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MAX ?? 10) });
 
@@ -48,9 +49,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     EventBusModule.forRoot({
       redisUrl: process.env.EVENT_BUS_REDIS_URL ?? process.env.REDIS_URL ?? '',
     }),
-    HealthModule.forRoot({
-      indicators: [],
-    }),
+    HealthModule.forRoot({ indicators: [] }),
     MetricsModule.forRoot({ serviceName: 'api' }),
     AuthModule.forRoot({
       apiKeyValidatorProvider: {
@@ -88,6 +87,7 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
     TelephonyModule,
     WebhooksModule,
     IntegrationsModule,
+    VoicesModule,
   ],
 })
 export class AppModule {}
