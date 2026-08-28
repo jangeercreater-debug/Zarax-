@@ -555,3 +555,85 @@ model Webhook {
   @@index([tenantId])
   @@map("webhooks")
 }
+
+// ============================================================
+// VOICE REGISTRY — Phase 1: Voice Engine Foundation
+// ============================================================
+// Stores system + tenant voices for the Zarax Voice Engine.
+// voiceType is designed for future phases:
+//   SYSTEM     — built-in Zarax voices, globally available
+//   GENERATED  — Phase 3: AI-generated voices
+//   CLONED     — Phase 4: consent-based voice cloning
+//   CUSTOM     — user-uploaded / custom voices
+//   MARKETPLACE — Phase 8: marketplace voices
+//
+// providerVoiceId maps to the underlying TTS provider's ID
+// (e.g. Cartesia voice UUID). Future phases may have no provider
+// (self-hosted model) — hence optional.
+// ============================================================
+
+enum VoiceType {
+  SYSTEM
+  GENERATED
+  CLONED
+  CUSTOM
+  MARKETPLACE
+
+  @@map("voice_type")
+}
+
+enum VoiceGender {
+  MALE
+  FEMALE
+  NEUTRAL
+
+  @@map("voice_gender")
+}
+
+enum VoiceStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+
+  @@map("voice_status")
+}
+
+model Voice {
+  id              String      @id @default(uuid())
+  /// null = global system voice available to all tenants
+  tenantId        String?     @map("tenant_id")
+  name            String      @db.VarChar(100)
+  description     String?     @db.VarChar(500)
+  voiceType       VoiceType   @default(SYSTEM) @map("voice_type")
+  gender          VoiceGender @default(NEUTRAL)
+  /// BCP-47 primary language tag e.g. "en", "hi", "hi-IN"
+  language        String      @default("en") @db.VarChar(10)
+  /// Additional supported languages (BCP-47)
+  languages       String[]
+  accent          String?     @db.VarChar(50)
+  ageRange        String?     @map("age_range") @db.VarChar(20)
+  style           String?     @db.VarChar(50)
+  defaultEmotion  String?     @map("default_emotion") @db.VarChar(30)
+  /// TTS provider name: "cartesia" | "openai" | "zarax" | null (self-hosted)
+  provider        String?     @db.VarChar(50)
+  /// Provider-specific voice ID (e.g. Cartesia UUID)
+  providerVoiceId String?     @map("provider_voice_id") @db.VarChar(200)
+  /// Provider-specific model (e.g. "sonic-2", "sonic-3")
+  model           String?     @db.VarChar(100)
+  /// For open-source / custom model speaker embeddings
+  speakerId       String?     @map("speaker_id") @db.VarChar(200)
+  status          VoiceStatus @default(ACTIVE)
+  /// Available to all tenants (system voices only)
+  isPublic        Boolean     @default(false) @map("is_public")
+  isDefault       Boolean     @default(false) @map("is_default")
+  /// Flexible metadata: sample rate, encoding, preview URL, tags, etc.
+  metadata        Json?
+  sampleAudioUrl  String?     @map("sample_audio_url") @db.VarChar(500)
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([isPublic, status])
+  @@map("voices")
+}
