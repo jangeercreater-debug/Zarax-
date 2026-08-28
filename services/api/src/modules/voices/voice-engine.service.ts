@@ -1,8 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 import { randomUUID } from 'node:crypto';
 
 import { CartesiaTTSAdapter } from './adapters/cartesia-tts.adapter';
+import type { TTSAdapter } from './adapters/tts-adapter.interface';
 import {
   DEFAULT_AUDIO_CONTRACT,
   VOICE_ERROR_CODES,
@@ -24,11 +25,27 @@ class VoiceError extends Error {
 @Injectable()
 export class VoiceEngineService {
   private readonly logger = new Logger(VoiceEngineService.name);
+  private readonly adapter: TTSAdapter | null;
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
-    private readonly ttsAdapter: CartesiaTTSAdapter,
-  ) {}
+    /**
+     * CartesiaTTSAdapter is OPTIONAL — Phase 1 Voice Registry and CRUD work
+     * without any TTS provider configured. Preview and synthesis return
+     * VOICE_PROVIDER_NOT_CONFIGURED when no adapter is available.
+     * Phase 2 will wire in the open-source TTS adapter.
+     */
+    @Optional() cartesiaAdapter?: CartesiaTTSAdapter,
+  ) {
+    this.adapter = cartesiaAdapter?.isConfigured() ? cartesiaAdapter : null;
+    this.logger.log(
+      this.adapter
+        ? `VoiceEngine: TTS adapter ready (${this.adapter.providerId})`
+        : 'VoiceEngine: No TTS adapter configured — CRUD/Registry available, synthesis/preview will return VOICE_PROVIDER_NOT_CONFIGURED',
+    );
+  }
+
+  // ─── Voice Registry (works without TTS adapter) ───────────────────────────
 
   async listVoices(tenantId: string, filters?: {
     gender?: string;
@@ -210,7 +227,21 @@ export class VoiceEngineService {
     this.logger.log('VoiceEngineService: voice deactivated', { tenantId, voiceId });
   }
 
+  // ─── Synthesis + Preview (require TTS adapter) ────────────────────────────
+
+  private requireAdapter(): TTSAdapter {
+    if (!this.adapter) {
+      throw new VoiceError(
+        'No TTS provider is configured. Phase 2 will add the open-source TTS engine.',
+        VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED,
+        503,
+      );
+    }
+    return this.adapter;
+  }
+
   async synthesize(tenantId: string, request: SynthesizeRequest): Promise<SynthesizeResponse> {
+    const adapter = this.requireAdapter();
     const voice = await this.getVoice(tenantId, request.voiceId);
 
     if (voice.status !== 'ACTIVE') {
@@ -226,19 +257,20 @@ export class VoiceEngineService {
     }
 
     const requestId = request.requestId ?? randomUUID();
-    await this.ttsAdapter.synthesize({ ...request, requestId }, voice.providerVoiceId);
+    await adapter.synthesize({ ...request, requestId }, voice.providerVoiceId);
 
     return {
       requestId,
       voiceId: voice.id,
       providerVoiceId: voice.providerVoiceId,
-      provider: voice.provider ?? this.ttsAdapter.providerId,
+      provider: voice.provider ?? adapter.providerId,
       audioFormat: DEFAULT_AUDIO_CONTRACT,
       audioUrl: undefined,
     };
   }
 
   async previewVoice(tenantId: string, voiceId: string, sampleText?: string): Promise<Buffer> {
+    const adapter = this.requireAdapter();
     const voice = await this.getVoice(tenantId, voiceId);
 
     if (voice.status !== 'ACTIVE') {
@@ -253,19 +285,19 @@ export class VoiceEngineService {
       );
     }
 
-    return this.ttsAdapter.preview(voice.providerVoiceId, sampleText);
+    return adapter.preview(voice.providerVoiceId, sampleText);
   }
 
-  async healthCheck(): Promise<{ provider: string; configured: boolean; healthy?: boolean; reason?: string }> {
-    if (!this.ttsAdapter.isConfigured()) {
+  async healthCheck(): Promise<{ provider: string | null; configured: boolean; healthy?: boolean; reason?: string }> {
+    if (!this.adapter) {
       return {
-        provider: this.ttsAdapter.providerId,
+        provider: null,
         configured: false,
         reason: VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED,
       };
     }
-    const result = await this.ttsAdapter.healthCheck();
-    return { provider: this.ttsAdapter.providerId, configured: true, ...result };
+    const result = await this.adapter.healthCheck();
+    return { provider: this.adapter.providerId, configured: true, ...result };
   }
 
   async validateVoice(tenantId: string, voiceId: string): Promise<{ valid: boolean; voice?: VoiceRecord }> {
