@@ -10,7 +10,6 @@ export interface LanguageDetectionResult {
 
 const HINDI_PATTERNS = /[\u0900-\u097F]|(\b(kya|hai|hain|mujhe|tumhara|iska|uska|main|tum|aap|hum|kab|kaise|kyun|yaar|bhai|accha|theek|nahi|haan|bohot|bahut|abhi|matlab|agar|lekin|phir|toh|woh|yeh|unka|mera|tera|apna)\b)/gi;
 const PUNJABI_PATTERNS = /(\b(ki|kiddan|kiven|tussi|menu|tenu|saadi|teri|meri|oye|sanu|kithey|kyun|hega|hegi|nahi|sat sri akal|waheguru)\b)/gi;
-const _URDU_PATTERNS = /[\u0600-\u06FF]|(\b(aap|mujhe|tumhara|phir|lekin|kyunki|isliye|warna|zaroor|shayad|bilkul|shukriya|meherbani)\b)/gi;
 const ENGLISH_PATTERNS = /\b(the|is|are|was|were|have|has|had|will|would|can|could|should|that|this|what|how|why|when|where|who|because|although|however|therefore)\b/gi;
 const HINGLISH_MARKERS = /(\b(karo|kar|ho gaya|ho gayi|bata|bol|sun|dekh|chal|aya|ayi|gaya|gayi|lena|dena|raha|rahi|wala|wali)\b)/gi;
 
