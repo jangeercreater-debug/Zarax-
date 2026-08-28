@@ -1,4 +1,4 @@
-import type { SynthesizeRequest, SynthesizeResponse } from '../dto/voice.types';
+import type { SynthesizeRequest } from '../dto/voice.types';
 
 /**
  * Phase 1: TTS Provider Adapter Interface
