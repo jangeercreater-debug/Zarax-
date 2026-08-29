@@ -285,7 +285,7 @@ export class VoiceEngineService {
       );
     }
 
-    return adapter.preview(voice.providerVoiceId, sampleText);
+    return adapter.preview(voice.providerVoiceId, sampleText ?? undefined);
   }
 
   async healthCheck(): Promise<{ provider: string | null; configured: boolean; healthy?: boolean; reason?: string }> {
