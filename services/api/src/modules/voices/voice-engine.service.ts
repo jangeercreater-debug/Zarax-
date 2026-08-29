@@ -288,6 +288,11 @@ export class VoiceEngineService {
     return adapter.preview(voice.providerVoiceId, sampleText ?? undefined);
   }
 
+  /** Returns the active TTSAdapter for direct use by VoiceDesignService. */
+  getActiveAdapter(): TTSAdapter | null {
+    return this.adapter;
+  }
+  
   async healthCheck(): Promise<{ provider: string | null; configured: boolean; healthy?: boolean; reason?: string }> {
     if (!this.adapter) {
       return {
