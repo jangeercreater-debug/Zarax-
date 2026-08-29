@@ -1,0 +1,55 @@
+{
+  "version": "1.0.0",
+  "model": "hexgrad/Kokoro-82M",
+  "model_license": "Apache-2.0",
+  "voices": [
+    {
+      "voice_id": "zarax_hindi_female_001",
+      "name": "Zarax",
+      "description": "Zarax default Hindi-English female voice — warm, natural, conversational.",
+      "language": "hi",
+      "languages": ["hi", "en", "hi-IN"],
+      "gender": "female",
+      "kokoro_voice": "hf_alpha",
+      "kokoro_lang_code": "h",
+      "style": "conversational",
+      "is_default": true
+    },
+    {
+      "voice_id": "zarax_english_female_001",
+      "name": "Aria",
+      "description": "Professional English female voice — clear, calm, business-appropriate.",
+      "language": "en",
+      "languages": ["en", "en-US"],
+      "gender": "female",
+      "kokoro_voice": "af_heart",
+      "kokoro_lang_code": "a",
+      "style": "professional",
+      "is_default": false
+    },
+    {
+      "voice_id": "zarax_english_male_001",
+      "name": "Alex",
+      "description": "Professional English male voice — confident, clear.",
+      "language": "en",
+      "languages": ["en", "en-US"],
+      "gender": "male",
+      "kokoro_voice": "am_adam",
+      "kokoro_lang_code": "a",
+      "style": "professional",
+      "is_default": false
+    },
+    {
+      "voice_id": "zarax_english_female_002",
+      "name": "Maya",
+      "description": "Warm English female voice — friendly, engaging.",
+      "language": "en",
+      "languages": ["en", "en-IN"],
+      "gender": "female",
+      "kokoro_voice": "af_bella",
+      "kokoro_lang_code": "a",
+      "style": "conversational",
+      "is_default": false
+    }
+  ]
+}
