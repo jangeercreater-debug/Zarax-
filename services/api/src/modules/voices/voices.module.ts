@@ -6,19 +6,14 @@ import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 
 import { CartesiaTTSAdapter } from './adapters/cartesia-tts.adapter';
 import { ZaraxTTSAdapter } from './adapters/zarax-tts.adapter';
-import type { TTSAdapter } from './adapters/tts-adapter.interface';
 import { VoiceEngineService } from './voice-engine.service';
 import { VoicesController } from './voices.controller';
 
 /**
  * Phase 2 adapter priority:
- *   1. ZaraxTTSAdapter — if ZARAX_TTS_SERVICE_URL is configured (Phase 2+)
- *   2. CartesiaTTSAdapter — if CARTESIA_API_KEY is configured (Phase 1 fallback)
- *   3. null — VOICE_PROVIDER_NOT_CONFIGURED returned on preview/synthesis
- *
- * Voice Registry CRUD works regardless of which adapter is active.
- * Phase 7 will replace Kokoro with the Zarax proprietary model in
- * zarax-tts-inference — this module needs no changes.
+ *   1. ZaraxTTSAdapter — if ZARAX_TTS_SERVICE_URL is configured
+ *   2. CartesiaTTSAdapter — if CARTESIA_API_KEY is configured
+ *   3. undefined — VOICE_PROVIDER_NOT_CONFIGURED on preview/synthesis
  */
 @Module({
   imports: [AuditLogModule.forRoot()],
@@ -28,17 +23,17 @@ import { VoicesController } from './voices.controller';
     CartesiaTTSAdapter,
     {
       provide: 'ACTIVE_TTS_ADAPTER',
-      useFactory: (zarax: ZaraxTTSAdapter, cartesia: CartesiaTTSAdapter): TTSAdapter | null => {
-        if (zarax.isConfigured()) return zarax;
+      useFactory: (zarax: ZaraxTTSAdapter, cartesia: CartesiaTTSAdapter): CartesiaTTSAdapter | undefined => {
+        if (zarax.isConfigured()) return zarax as unknown as CartesiaTTSAdapter;
         if (cartesia.isConfigured()) return cartesia;
-        return null;
+        return undefined;
       },
       inject: [ZaraxTTSAdapter, CartesiaTTSAdapter],
     },
     {
       provide: VoiceEngineService,
-      useFactory: (prisma: PrismaClient, adapter: TTSAdapter | null) =>
-        new VoiceEngineService(prisma, adapter ?? undefined),
+      useFactory: (prisma: PrismaClient, adapter: CartesiaTTSAdapter | undefined) =>
+        new VoiceEngineService(prisma, adapter),
       inject: [PRISMA_CLIENT, 'ACTIVE_TTS_ADAPTER'],
     },
   ],
