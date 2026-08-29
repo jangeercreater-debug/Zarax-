@@ -637,3 +637,108 @@ model Voice {
   @@index([isPublic, status])
   @@map("voices")
 }
+
+// ============================================================
+// VOICE CLONE ENGINE — Phase 4: Consent-Based Voice Cloning
+// ============================================================
+// VoiceCloneConsent: Records user consent before any audio is processed.
+// VoiceCloneProfile: Stores the voice profile metadata after audio validation.
+//
+// Synthesis state:
+//   PROFILE_READY         = profile extracted, GPU synthesis not yet available
+//   SYNTHESIS_UNAVAILABLE = explicit state when GPU is not configured
+//   SYNTHESIS_READY       = GPU inference service available (Phase 6)
+//
+// Design: VoiceCloneProfile links to the existing Voice Registry (Voice model)
+// via voiceId once synthesis is available. Until then, voiceId is null.
+// ============================================================
+
+enum VoiceCloneStatus {
+  UPLOADING
+  VALIDATING
+  PROCESSING
+  PROFILE_READY
+  SYNTHESIS_UNAVAILABLE
+  SYNTHESIS_READY
+  FAILED
+  INACTIVE
+
+  @@map("voice_clone_status")
+}
+
+enum VoiceCloneConsentVersion {
+  V1
+
+  @@map("voice_clone_consent_version")
+}
+
+model VoiceCloneConsent {
+  id              String                   @id @default(uuid())
+  tenantId        String                   @map("tenant_id")
+  userId          String                   @map("user_id")
+  /// Exact consent statement presented and accepted by user
+  consentText     String                   @map("consent_text") @db.Text
+  consentVersion  VoiceCloneConsentVersion @default(V1) @map("consent_version")
+  /// ISO 8601 timestamp from the client when user clicked "I Consent"
+  consentedAt     DateTime                 @map("consented_at")
+  /// true = user confirmed this is their own voice
+  isSelfVoice     Boolean                  @map("is_self_voice")
+  /// SHA256 of the consent statement to verify it was not tampered with
+  consentHash     String                   @map("consent_hash") @db.VarChar(64)
+  ipAddress       String?                  @map("ip_address") @db.VarChar(45)
+  userAgent       String?                  @map("user_agent") @db.VarChar(500)
+  createdAt       DateTime                 @default(now()) @map("created_at")
+
+  profile VoiceCloneProfile?
+
+  @@index([tenantId, userId])
+  @@map("voice_clone_consents")
+}
+
+model VoiceCloneProfile {
+  id              String            @id @default(uuid())
+  tenantId        String            @map("tenant_id")
+  userId          String            @map("user_id")
+  name            String            @db.VarChar(100)
+  description     String?           @db.VarChar(500)
+  status          VoiceCloneStatus  @default(UPLOADING)
+  consentId       String            @unique @map("consent_id")
+  consent         VoiceCloneConsent @relation(fields: [consentId], references: [id])
+
+  /// Audio metadata — never store raw audio in logs
+  audioMimeType   String            @map("audio_mime_type") @db.VarChar(50)
+  audioDurationS  Float             @map("audio_duration_s")
+  audioSizeBytes  Int               @map("audio_size_bytes")
+  audioSha256     String            @map("audio_sha256") @db.VarChar(64)
+  /// Temporary base64 audio for processing — cleared after embedding extraction
+  audioDataBase64 String?           @map("audio_data_base64") @db.Text
+
+  /// Speaker embedding metadata (set when status = PROFILE_READY)
+  embeddingModel  String?           @map("embedding_model") @db.VarChar(100)
+  embeddingDim    Int?              @map("embedding_dim")
+  /// Serialized embedding vector (base64 encoded float32 array)
+  embeddingData   String?           @map("embedding_data") @db.Text
+
+  /// Cloning model metadata
+  cloningModel    String?           @map("cloning_model") @db.VarChar(100)
+  cloningModelVer String?           @map("cloning_model_ver") @db.VarChar(50)
+
+  /// Linked Voice Registry entry (null until synthesis is available)
+  voiceId         String?           @map("voice_id")
+
+  /// Error details if status = FAILED
+  failureReason   String?           @map("failure_reason") @db.VarChar(500)
+
+  /// Synthesis availability
+  synthesisAvail  Boolean           @default(false) @map("synthesis_avail")
+
+  processingStartedAt DateTime?     @map("processing_started_at")
+  processingDoneAt    DateTime?     @map("processing_done_at")
+  createdAt           DateTime      @default(now()) @map("created_at")
+  updatedAt           DateTime      @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, status])
+  @@map("voice_clone_profiles")
+}
