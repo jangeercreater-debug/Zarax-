@@ -1,3 +1,4 @@
+// Phase 1: CartesiaTTSAdapter optional — app starts without CARTESIA_API_KEY
 import { Module } from '@nestjs/common';
 import { AuditLogModule } from '@zarax/audit-log';
 
