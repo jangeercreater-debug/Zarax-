@@ -281,7 +281,7 @@ export class VoiceDesignService {
   }
 
   async previewCandidate(
-    tenantId: string,
+    _tenantId: string,
     providerVoiceId: string,
     sampleText?: string,
   ): Promise<Buffer> {
