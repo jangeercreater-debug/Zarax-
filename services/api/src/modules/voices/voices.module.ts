@@ -2,9 +2,11 @@
 // Phase 2: ZaraxTTSAdapter added — connects to Zarax TTS Inference Service (Kokoro-82M)
 import { Module } from '@nestjs/common';
 import { AuditLogModule } from '@zarax/audit-log';
+import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
 
 import { CartesiaTTSAdapter } from './adapters/cartesia-tts.adapter';
 import { ZaraxTTSAdapter } from './adapters/zarax-tts.adapter';
+import type { TTSAdapter } from './adapters/tts-adapter.interface';
 import { VoiceEngineService } from './voice-engine.service';
 import { VoicesController } from './voices.controller';
 
@@ -26,24 +28,18 @@ import { VoicesController } from './voices.controller';
     CartesiaTTSAdapter,
     {
       provide: 'ACTIVE_TTS_ADAPTER',
-      useFactory: (zarax: ZaraxTTSAdapter, cartesia: CartesiaTTSAdapter) => {
-        if (zarax.isConfigured()) {
-          return zarax;
-        }
-        if (cartesia.isConfigured()) {
-          return cartesia;
-        }
+      useFactory: (zarax: ZaraxTTSAdapter, cartesia: CartesiaTTSAdapter): TTSAdapter | null => {
+        if (zarax.isConfigured()) return zarax;
+        if (cartesia.isConfigured()) return cartesia;
         return null;
       },
       inject: [ZaraxTTSAdapter, CartesiaTTSAdapter],
     },
     {
       provide: VoiceEngineService,
-      useFactory: (
-        prisma: import('@zarax/database').PrismaClient,
-        adapter: import('./adapters/zarax-tts.adapter').ZaraxTTSAdapter | null,
-      ) => new VoiceEngineService(prisma, adapter ?? undefined),
-      inject: ['PRISMA_CLIENT', 'ACTIVE_TTS_ADAPTER'],
+      useFactory: (prisma: PrismaClient, adapter: TTSAdapter | null) =>
+        new VoiceEngineService(prisma, adapter ?? undefined),
+      inject: [PRISMA_CLIENT, 'ACTIVE_TTS_ADAPTER'],
     },
   ],
   exports: [VoiceEngineService],
