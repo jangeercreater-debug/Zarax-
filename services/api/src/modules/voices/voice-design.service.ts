@@ -285,9 +285,14 @@ export class VoiceDesignService {
     providerVoiceId: string,
     sampleText?: string,
   ): Promise<Buffer> {
-    return this.voiceEngine.previewVoice(tenantId, providerVoiceId, sampleText);
+    // Voice Design candidates use providerVoiceId directly (e.g. zarax_hindi_female_001)
+    // not the database UUID — call adapter directly, bypassing getVoice() lookup
+    const adapter = this.voiceEngine.getActiveAdapter();
+    if (!adapter) {
+      throw new Error('VOICE_PROVIDER_NOT_CONFIGURED');
+    }
+    return adapter.preview(providerVoiceId, sampleText);
   }
-
   async saveVoice(
     tenantId: string,
     candidate: {
