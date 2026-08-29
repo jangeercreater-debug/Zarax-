@@ -8,17 +8,30 @@ import { VoicesController } from './voices.controller';
 /**
  * Phase 1: Voice Engine Module
  *
- * Registers the Voice Engine, CartesiaTTSAdapter, and Voice Registry API.
+ * IMPORTANT: CartesiaTTSAdapter is registered as OPTIONAL.
+ * The Voice Registry (CRUD, list, validate) works with zero env vars.
+ * Preview and synthesis return VOICE_PROVIDER_NOT_CONFIGURED when
+ * CARTESIA_API_KEY is absent — this is correct Phase 1 behavior.
  *
- * Future phases add new adapters here without touching other modules:
- *   Phase 2: OpenSourceTTSAdapter
- *   Phase 4: VoiceCloneAdapter
- *   Phase 7: ZaraxTTSAdapter
+ * Phase 2 will wire in the open-source TTS adapter here instead.
+ * No changes to VoiceEngineService or VoicesController will be needed.
  */
 @Module({
   imports: [AuditLogModule.forRoot()],
   controllers: [VoicesController],
-  providers: [CartesiaTTSAdapter, VoiceEngineService],
+  providers: [
+    {
+      provide: CartesiaTTSAdapter,
+      useFactory: () => {
+        const adapter = new CartesiaTTSAdapter();
+        if (!adapter.isConfigured()) {
+          return undefined;
+        }
+        return adapter;
+      },
+    },
+    VoiceEngineService,
+  ],
   exports: [VoiceEngineService],
 })
 export class VoicesModule {}
