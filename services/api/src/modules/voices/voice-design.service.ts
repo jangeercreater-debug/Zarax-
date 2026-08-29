@@ -1,5 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import { VoiceEngineService } from './voice-engine.service';
@@ -245,7 +244,6 @@ export class VoiceDesignService {
   private readonly logger = new Logger(VoiceDesignService.name);
 
   constructor(
-    @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     private readonly voiceEngine: VoiceEngineService,
   ) {}
 
