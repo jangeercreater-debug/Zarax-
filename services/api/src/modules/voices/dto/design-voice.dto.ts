@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
-  IsBoolean, IsNumber, IsOptional, IsString,
-  Max, MaxLength, Min, MinLength,
+  IsOptional, IsString,
+  MaxLength, MinLength,
 } from 'class-validator';
 
 export class DesignVoiceDto {
