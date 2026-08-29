@@ -20,7 +20,7 @@ import { VoiceDesignController } from './voice-design.controller';
  */
 @Module({
   imports: [AuditLogModule.forRoot()],
-  controllers: [VoicesController, VoiceDesignController],
+  controllers: [VoiceDesignController, VoicesController],
   providers: [
     ZaraxTTSAdapter,
     CartesiaTTSAdapter,
