@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import {
-  DEFAULT_AUDIO_CONTRACT,
   VOICE_ERROR_CODES,
   type SynthesizeRequest,
 } from '../dto/voice.types';
@@ -172,7 +171,7 @@ export class ZaraxTTSAdapter implements TTSAdapter {
         if (errBody.detail?.message) errMsg = errBody.detail.message;
       } catch { /* ignore parse errors */ }
 
-      if (response.status === 503) errCode = VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED;
+      if (response.status === 503) errCode = VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED;
 
       this.logger.error('ZaraxTTSAdapter: inference error', { status: response.status, errCode });
       throw new TtsError(errMsg, errCode);
