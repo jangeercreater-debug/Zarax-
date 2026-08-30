@@ -1,4 +1,4 @@
-import type { SynthesizeRequest } from '../dto/voice.types';
+import type { SynthesizeRequest, VoiceCapabilities } from '../dto/voice.types';
 
 /**
  * Phase 1: TTS Provider Adapter Interface
@@ -11,9 +11,10 @@ import type { SynthesizeRequest } from '../dto/voice.types';
  *
  * Phase 2 will implement: OpenSourceTTSAdapter (self-hosted model)
  * Phase 4 will implement: VoiceCloneAdapter
+ * Phase 5 adds: capabilities() — honest per-engine capability declaration
  * Phase 7 will implement: ZaraxTTSAdapter (proprietary model)
  *
- * Current Phase 1 implementation: CartesiaTTSAdapter
+ * Current Phase 2 implementation: ZaraxTTSAdapter (Kokoro-82M)
  */
 export interface TTSAdapter {
   /** Unique adapter identifier e.g. "cartesia", "openai-tts", "zarax" */
@@ -32,6 +33,15 @@ export interface TTSAdapter {
    * May use a shorter/cheaper model if available.
    */
   preview(providerVoiceId: string, sampleText?: string): Promise<Buffer>;
+
+  /**
+   * Phase 5: Return honest capability declaration for this adapter.
+   * REAL = produces actual audio effect now.
+   * SPEC_ONLY = stored + forwarded, no current audio effect.
+   * GPU_REQUIRED = available when Phase 6 GPU infrastructure deployed.
+   * Never claim REAL for capabilities that don't actually work.
+   */
+  getCapabilities(providerVoiceId?: string): VoiceCapabilities;
 
   /**
    * Check whether the underlying provider is reachable and configured.
