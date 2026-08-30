@@ -292,6 +292,39 @@ export class VoiceEngineService {
   getActiveAdapter(): TTSAdapter | null {
     return this.adapter;
   }
+
+  /**
+   * Phase 5: Return honest capability declaration for a voice.
+   * Delegates to the active adapter's getCapabilities().
+   * If no adapter is configured, returns all capabilities as UNSUPPORTED.
+   */
+  async getVoiceCapabilities(tenantId: string, voiceId: string): Promise<VoiceCapabilities> {
+    const voice = await this.getVoice(tenantId, voiceId);
+    if (!this.adapter) {
+      return {
+        voiceId,
+        provider: 'none',
+        model: 'none',
+        realCapabilities: [],
+        capabilities: {
+          speed: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          language: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          emotion: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          style: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          pitch: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          energy: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          pause: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          intensity: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          streaming: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+          voiceCloning: { supported: 'UNSUPPORTED', description: 'No TTS adapter configured.' },
+        },
+        languages: [],
+        gpuRequiredFor: [],
+        honestSummary: 'No TTS adapter is configured. Configure ZARAX_TTS_SERVICE_URL to enable synthesis.',
+      };
+    }
+    return this.adapter.getCapabilities(voice.providerVoiceId ?? undefined);
+  }
   
   async healthCheck(): Promise<{ provider: string | null; configured: boolean; healthy?: boolean; reason?: string }> {
     if (!this.adapter) {
