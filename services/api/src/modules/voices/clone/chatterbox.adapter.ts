@@ -89,13 +89,12 @@ export class ChatterboxAdapter implements VoiceCloneAdapter {
     this.logger.warn('ChatterboxAdapter: synthesizeFromClone called but synthesis unavailable', {
       reason: CLONING_MODEL_METADATA.synthesisBlockedReason,
     });
-
-    const err = new Error(SYNTHESIS_UNAVAILABLE_MESSAGE);
-    (err as Record<string, unknown>)['cloneErrorCode'] = CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE;
-    (err as Record<string, unknown>)['synthesisAvailable'] = false;
-    (err as Record<string, unknown>)['gpuRequired'] = true;
-    (err as Record<string, unknown>)['model'] = CLONING_MODEL_METADATA.model;
-    throw err;
+    throw Object.assign(new Error(SYNTHESIS_UNAVAILABLE_MESSAGE), {
+      cloneErrorCode: CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE,
+      synthesisAvailable: false,
+      gpuRequired: true,
+      model: CLONING_MODEL_METADATA.model,
+    });
   }
 
   async healthCheck(): Promise<{ healthy: boolean; synthesisAvailable: boolean; reason?: string }> {
