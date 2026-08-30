@@ -129,3 +129,137 @@ export const VOICE_ERROR_CODES = {
 } as const;
 
 export type VoiceErrorCode = (typeof VOICE_ERROR_CODES)[keyof typeof VOICE_ERROR_CODES];
+
+  // ─── Phase 5: Voice Expression Model ─────────────────────────────────────────
+
+/**
+ * Engine-independent voice expression specification.
+ *
+ * IMPORTANT — Kokoro-82M actual support:
+ *   speed:   REAL — wired to KPipeline speed= param
+ *   language: REAL — wired to KPipeline lang_code= param
+ *   emotion:  SPEC ONLY — no audio effect on Kokoro; forwarded to future GPU model
+ *   pitch:    SPEC ONLY — not supported by Kokoro; forwarded to future GPU model
+ *   energy:   SPEC ONLY — not supported by Kokoro; forwarded to future GPU model
+ *   style:    SPEC ONLY — not supported by Kokoro; forwarded to future GPU model
+ *   pause:    PARTIAL — text punctuation creates natural pauses
+ *
+ * When Phase 6 GPU infrastructure is deployed, all SPEC ONLY fields
+ * will produce real audio effects via Chatterbox or Zarax model.
+ */
+export type VoiceEmotion =
+  | 'neutral' | 'happy' | 'sad' | 'angry' | 'excited'
+  | 'calm' | 'serious' | 'empathetic' | 'confident' | 'friendly';
+
+export type VoiceStyle =
+  | 'conversational' | 'professional' | 'storytelling'
+  | 'customer_support' | 'narrator' | 'assistant';
+
+export type PauseHint = 'short' | 'medium' | 'long';
+
+export type SupportedLanguage = 'en' | 'hi' | 'hinglish';
+
+export interface VoiceExpression {
+  /** Emotional tone. SPEC ONLY on Kokoro — real effect on future GPU model. */
+  emotion?: VoiceEmotion;
+  /** Speaking style. SPEC ONLY on Kokoro. */
+  style?: VoiceStyle;
+  /**
+   * Intensity 0–100. SPEC ONLY on Kokoro.
+   * Maps to emotion intensity for future GPU model.
+   */
+  intensity?: number;
+  /**
+   * Speaking rate multiplier 0.75–1.25 (preview) or 0.5–2.0 (synthesis).
+   * REAL on Kokoro — wired to KPipeline speed= param.
+   */
+  speakingRate?: number;
+  /**
+   * Pitch adjustment. SPEC ONLY — not supported by Kokoro.
+   * Forwarded to future GPU model as metadata.
+   */
+  pitch?: number;
+  /**
+   * Energy/intensity 0–100. SPEC ONLY on Kokoro.
+   * Forwarded to future GPU model as metadata.
+   */
+  energy?: number;
+  /**
+   * Pause behavior hint. PARTIAL on Kokoro — implemented via
+   * punctuation insertion in text (commas, periods).
+   */
+  pause?: PauseHint;
+  /** BCP-47 language tag. REAL on Kokoro — selects appropriate pipeline. */
+  language?: SupportedLanguage | string;
+}
+
+// ─── Phase 5: Voice Capability System ────────────────────────────────────────
+
+/**
+ * Support level for a voice capability.
+ * REAL = produces actual audio effect on current engine
+ * PARTIAL = limited/approximate support
+ * SPEC_ONLY = stored and forwarded, no current audio effect
+ * UNSUPPORTED = not available on this voice/engine
+ * GPU_REQUIRED = will be available when Phase 6 GPU infrastructure is deployed
+ */
+export type CapabilityLevel =
+  | 'REAL'
+  | 'PARTIAL'
+  | 'SPEC_ONLY'
+  | 'UNSUPPORTED'
+  | 'GPU_REQUIRED';
+
+export interface VoiceCapabilityDetail {
+  supported: CapabilityLevel;
+  description: string;
+  range?: { min: number; max: number };
+  values?: string[];
+}
+
+export interface VoiceCapabilities {
+  voiceId: string;
+  provider: string;
+  model: string;
+  /** Only these capabilities produce actual audio effect now */
+  realCapabilities: string[];
+  capabilities: {
+    speed: VoiceCapabilityDetail;
+    language: VoiceCapabilityDetail;
+    emotion: VoiceCapabilityDetail;
+    style: VoiceCapabilityDetail;
+    pitch: VoiceCapabilityDetail;
+    energy: VoiceCapabilityDetail;
+    pause: VoiceCapabilityDetail;
+    intensity: VoiceCapabilityDetail;
+    streaming: VoiceCapabilityDetail;
+    voiceCloning: VoiceCapabilityDetail;
+  };
+  languages: string[];
+  gpuRequiredFor: string[];
+  honestSummary: string;
+}
+
+// ─── Phase 5: Language-aware preview text ─────────────────────────────────────
+
+export const DEFAULT_PREVIEW_TEXTS: Record<SupportedLanguage, string> = {
+  en: 'Hello! I am Zarax. How can I help you today?',
+  hi: 'Namaste! Main Zarax hoon. Aapki kaise madad kar sakti hoon?',
+  hinglish: 'Namaste! Main Zarax hoon. Bataiye, main aapki kaise help kar sakti hoon?',
+};
+
+/**
+ * Maps Kokoro lang_code to BCP-47 language tags.
+ * Only add entries for genuinely tested combinations.
+ */
+export const KOKORO_LANGUAGE_MAP: Record<string, string> = {
+  en: 'a',   // American English
+  'en-US': 'a',
+  'en-GB': 'b', // British English
+  hi: 'h',   // Hindi
+  'hi-IN': 'h',
+  hinglish: 'h', // Use Hindi pipeline for Hinglish (best available)
+  ja: 'j',   // Japanese
+  zh: 'z',   // Chinese
+};
+
