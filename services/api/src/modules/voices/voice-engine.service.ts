@@ -9,6 +9,7 @@ import {
   VOICE_ERROR_CODES,
   type SynthesizeRequest,
   type SynthesizeResponse,
+  type VoiceCapabilities,
   type VoiceRecord,
 } from './dto/voice.types';
 
