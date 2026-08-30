@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import {
-  import {
   KOKORO_LANGUAGE_MAP,
+  VOICE_ERROR_CODES,
+  type VoiceCapabilities,
   VOICE_ERROR_CODES,
   type SynthesizeRequest,
   type VoiceCapabilities,
