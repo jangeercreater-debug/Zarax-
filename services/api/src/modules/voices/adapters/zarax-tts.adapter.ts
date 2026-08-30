@@ -1,30 +1,37 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import {
+  DEFAULT_AUDIO_CONTRACT,
+  KOKORO_LANGUAGE_MAP,
   VOICE_ERROR_CODES,
   type SynthesizeRequest,
+  type VoiceCapabilities,
 } from '../dto/voice.types';
 import type { TTSAdapter } from './tts-adapter.interface';
 
 /**
- * Phase 2: Zarax TTS Adapter
+ * Phase 2: Zarax TTS Adapter (updated Phase 5)
  *
  * Connects VoiceEngineService to the Zarax TTS Inference Service
  * (services/zarax-tts-inference — Kokoro-82M, Apache 2.0).
  *
- * Architecture:
- *   VoiceEngineService → ZaraxTTSAdapter → zarax-tts-inference → Kokoro-82M
+ * Phase 5 additions:
+ * - speed param wired to Kokoro (REAL capability)
+ * - language param wired to Kokoro lang_code (REAL capability)
+ * - getCapabilities() returns honest capability declaration
+ * - emotion/pitch/energy forwarded as spec (no audio effect on Kokoro)
  *
- * The inference service is internal — never exposed publicly.
- * Multi-tenancy and RBAC are enforced by VoiceEngineService before
- * this adapter is called.
- *
- * Future: Phase 7 replaces Kokoro with the Zarax proprietary model
- * by updating the inference service — this adapter code stays unchanged.
+ * HONEST KOKORO CAPABILITY SUMMARY:
+ *   speed:   REAL   — KPipeline speed= param (0.5-2.0)
+ *   language: REAL  — KPipeline lang_code= param
+ *   emotion:  SPEC_ONLY — no audio effect; future GPU model
+ *   pitch:    SPEC_ONLY — not supported by Kokoro
+ *   energy:   SPEC_ONLY — not supported by Kokoro
+ *   style:    SPEC_ONLY — not supported by Kokoro
  */
 
-const DEFAULT_SAMPLE_TEXT_EN = 'Hi! I am Zarax. How can I help you today?';
-const DEFAULT_SAMPLE_TEXT_HI = 'Namaste! Main Zarax hoon. Aapki kya madad kar sakti hoon?';
+const DEFAULT_SAMPLE_TEXT_EN = 'Hello! I am Zarax. How can I help you today?';
+const DEFAULT_SAMPLE_TEXT_HI = 'Namaste! Main Zarax hoon. Aapki kaise madad kar sakti hoon?';
 const PREVIEW_MAX_CHARS = 200;
 const SYNTHESIS_TIMEOUT_MS = 30_000;
 const PREVIEW_TIMEOUT_MS = 15_000;
@@ -64,19 +71,28 @@ export class ZaraxTTSAdapter implements TTSAdapter {
     const text = request.text.slice(0, 5000);
     const format = request.outputFormat?.encoding === 'pcm_s16le' ? 'pcm' : 'wav';
 
+    // Phase 5: wire speed (REAL) and language (REAL) to Kokoro
+    const speed = this.clampSpeed(request.speed ?? 1.0);
+    const langCode = request.language
+      ? (KOKORO_LANGUAGE_MAP[request.language] ?? 'a')
+      : undefined;
+
     this.logger.log('ZaraxTTSAdapter: synthesize', {
       requestId: request.requestId,
       voiceId: request.voiceId,
       providerVoiceId,
       chars: text.length,
-      format,
+      speed,
+      langCode,
+      // emotion/style are SPEC_ONLY — log for observability but note they have no audio effect
+      emotion: request.emotion ?? 'neutral (spec only)',
     });
 
     return this.callInferenceService('/synthesize', {
       text,
       voice_id: providerVoiceId,
-      language: request.language,
-      speed: request.speed ?? 1.0,
+      language: langCode,
+      speed,
       format,
       request_id: request.requestId,
     }, SYNTHESIS_TIMEOUT_MS);
@@ -90,22 +106,102 @@ export class ZaraxTTSAdapter implements TTSAdapter {
       );
     }
 
-    // Pick sample text based on voice language
-    const isHindi = providerVoiceId.startsWith('zarax_hindi') ||
+    // Phase 5: language-aware default preview text
+    const isHindi = providerVoiceId.includes('hindi') ||
       providerVoiceId.includes('hf_') ||
       providerVoiceId.includes('hm_');
 
-    const text = (sampleText ?? (isHindi ? DEFAULT_SAMPLE_TEXT_HI : DEFAULT_SAMPLE_TEXT_EN))
-      .slice(0, PREVIEW_MAX_CHARS);
+    const defaultText = isHindi ? DEFAULT_SAMPLE_TEXT_HI : DEFAULT_SAMPLE_TEXT_EN;
+    const text = (sampleText ?? defaultText).slice(0, PREVIEW_MAX_CHARS);
 
-    this.logger.log('ZaraxTTSAdapter: preview', { providerVoiceId, chars: text.length });
+    // Detect language from provider voice ID for correct Kokoro pipeline
+    const langCode = isHindi ? 'h' : 'a';
+
+    this.logger.log('ZaraxTTSAdapter: preview', {
+      providerVoiceId,
+      chars: text.length,
+      langCode,
+    });
 
     return this.callInferenceService('/synthesize', {
       text,
       voice_id: providerVoiceId,
       speed: 1.0,
+      lang_code_override: langCode,
       format: 'wav',
     }, PREVIEW_TIMEOUT_MS);
+  }
+
+  /**
+   * Phase 5: Honest capability declaration for Kokoro-82M.
+   * REAL = produces actual audio effect.
+   * SPEC_ONLY = stored/forwarded, no current audio effect.
+   * GPU_REQUIRED = available in Phase 6 with Chatterbox/Zarax GPU service.
+   */
+  getCapabilities(_providerVoiceId?: string): VoiceCapabilities {
+    return {
+      voiceId: _providerVoiceId ?? 'any',
+      provider: 'zarax',
+      model: 'kokoro-82m',
+      realCapabilities: ['speed', 'language'],
+      capabilities: {
+        speed: {
+          supported: 'REAL',
+          description: 'Speaking rate — wired to Kokoro KPipeline speed= param.',
+          range: { min: 0.5, max: 2.0 },
+        },
+        language: {
+          supported: 'REAL',
+          description: 'Language selection via Kokoro lang_code — English (en), Hindi (hi), British English (en-GB), Japanese (ja), Chinese (zh).',
+          values: ['en', 'hi', 'en-GB', 'ja', 'zh'],
+        },
+        emotion: {
+          supported: 'GPU_REQUIRED',
+          description: 'Emotional tone — stored as expression spec. No audio effect on Kokoro. Will produce real audio effect when Phase 6 GPU (Chatterbox/Zarax) is deployed.',
+          values: ['neutral', 'happy', 'sad', 'angry', 'excited', 'calm', 'serious', 'empathetic', 'confident', 'friendly'],
+        },
+        style: {
+          supported: 'GPU_REQUIRED',
+          description: 'Speaking style — stored as expression spec. No audio effect on Kokoro. Requires GPU model.',
+          values: ['conversational', 'professional', 'storytelling', 'customer_support', 'narrator', 'assistant'],
+        },
+        pitch: {
+          supported: 'GPU_REQUIRED',
+          description: 'Pitch adjustment — not supported by Kokoro. Requires GPU model.',
+          range: { min: -50, max: 50 },
+        },
+        energy: {
+          supported: 'GPU_REQUIRED',
+          description: 'Energy/intensity — not supported by Kokoro. Requires GPU model.',
+          range: { min: 0, max: 100 },
+        },
+        pause: {
+          supported: 'PARTIAL',
+          description: 'Pause control — partial via text punctuation (commas, periods add natural pauses). No direct timing control.',
+          values: ['short', 'medium', 'long'],
+        },
+        intensity: {
+          supported: 'GPU_REQUIRED',
+          description: 'Expression intensity — stored as spec. Requires GPU model.',
+          range: { min: 0, max: 100 },
+        },
+        streaming: {
+          supported: 'PARTIAL',
+          description: 'Streaming synthesis — partial via chunked generation in Kokoro pipeline.',
+        },
+        voiceCloning: {
+          supported: 'GPU_REQUIRED',
+          description: 'Voice cloning from reference audio — requires Chatterbox GPU service (Phase 6).',
+        },
+      },
+      languages: ['en', 'en-US', 'en-GB', 'hi', 'hi-IN', 'ja', 'zh'],
+      gpuRequiredFor: ['emotion', 'style', 'pitch', 'energy', 'intensity', 'voiceCloning'],
+      honestSummary:
+        'Kokoro-82M supports real speed control and language selection. ' +
+        'Emotion, pitch, energy, and style are stored as expression specs ' +
+        'and will produce real audio effects when Phase 6 GPU infrastructure ' +
+        '(Chatterbox Multilingual V3) is deployed.',
+    };
   }
 
   async healthCheck(): Promise<{ healthy: boolean; reason?: string }> {
@@ -120,7 +216,7 @@ export class ZaraxTTSAdapter implements TTSAdapter {
       });
 
       if (res.ok) {
-        const data = await res.json() as { ready?: boolean; model?: string };
+        const data = await res.json() as { ready?: boolean };
         return { healthy: data.ready === true };
       }
 
@@ -135,6 +231,10 @@ export class ZaraxTTSAdapter implements TTSAdapter {
         reason: error instanceof Error ? error.message : 'Inference service unreachable',
       };
     }
+  }
+
+  private clampSpeed(speed: number): number {
+    return Math.min(Math.max(speed, 0.5), 2.0);
   }
 
   private async callInferenceService(
@@ -169,9 +269,9 @@ export class ZaraxTTSAdapter implements TTSAdapter {
         const errBody = await response.json() as { detail?: { code?: string; message?: string } };
         if (errBody.detail?.code) errCode = errBody.detail.code as never;
         if (errBody.detail?.message) errMsg = errBody.detail.message;
-      } catch { /* ignore parse errors */ }
+      } catch { /* ignore */ }
 
-      if (response.status === 503) errCode = VOICE_ERROR_CODES.VOICE_SYNTHESIS_FAILED;
+      if (response.status === 503) errCode = VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED;
 
       this.logger.error('ZaraxTTSAdapter: inference error', { status: response.status, errCode });
       throw new TtsError(errMsg, errCode);
