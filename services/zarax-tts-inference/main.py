@@ -185,10 +185,10 @@ class SynthesizeRequest(BaseModel):
     text: str = Field(..., max_length=MAX_TEXT_LENGTH, description="Text to synthesize.")
     voice_id: str = Field(..., description="Zarax voice ID from voices.json.")
     language: Optional[str] = Field(None, description="BCP-47 language override.")
-    speed: float = Field(1.0, ge=0.5, le=2.0, description="Speed multiplier.")
+    lang_code_override: Optional[str] = Field(None, description="Direct Kokoro lang_code override (a=AmEng, b=BrEng, h=Hindi, j=Japanese, z=Chinese).")
+    speed: float = Field(1.0, ge=0.5, le=2.0, description="Speed multiplier (REAL — wired to Kokoro speed= param).")
     format: str = Field("wav", description="Output format: wav or pcm.")
     request_id: Optional[str] = Field(None, description="Correlation ID for tracing.")
-
 
 @app.post("/synthesize")
 def synthesize(req: SynthesizeRequest, x_internal_token: Optional[str] = Header(None)):
@@ -233,11 +233,27 @@ def synthesize(req: SynthesizeRequest, x_internal_token: Optional[str] = Header(
         )
 
     # ── Select Kokoro pipeline + voice ──────────────────────────────────────
-    lang_code = voice_config.get("kokoro_lang_code", "a")
+    # Phase 5: lang_code_override takes priority, then voice config, then default
+    lang_code = req.lang_code_override or voice_config.get("kokoro_lang_code", "a")
     kokoro_voice = voice_config.get("kokoro_voice", "af_heart")
+
+    # Map BCP-47 language to Kokoro lang_code if not already a lang_code
+    BCP47_TO_KOKORO = {
+        "en": "a", "en-US": "a", "en-GB": "b",
+        "hi": "h", "hi-IN": "h", "hinglish": "h",
+        "ja": "j", "zh": "z",
+    }
+    if lang_code in BCP47_TO_KOKORO:
+        lang_code = BCP47_TO_KOKORO[lang_code]
+
+    # Phase 5: speed is REAL — wired to KPipeline speed= param
+    speed = max(0.5, min(2.0, req.speed))
 
     # Fallback to English pipeline if requested language pipeline unavailable
     pipeline = _pipeline.get(lang_code) or _pipeline.get("a")
+    if pipeline is None and lang_code != "a":
+        logger.warning(f"Pipeline for lang_code={lang_code} unavailable, falling back to English")
+        pipeline = _pipeline.get("a") 
     if pipeline is None:
         raise HTTPException(
             status_code=503,
@@ -248,7 +264,7 @@ def synthesize(req: SynthesizeRequest, x_internal_token: Optional[str] = Header(
     # ── Synthesize ──────────────────────────────────────────────────────────
     try:
         audio_chunks = []
-        for _, _, audio in pipeline(text, voice=kokoro_voice, speed=req.speed):
+        for _, _, audio in pipeline(text, voice=kokoro_voice, speed=speed):
             if audio is not None:
                 audio_chunks.append(audio)
 
