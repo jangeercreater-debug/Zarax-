@@ -147,4 +147,23 @@ export class VoicesController {
     const result = await this.voiceEngine.validateVoice(principal.tenantId, id);
     return { data: result };
   }
+
+  @RequirePermission(PERMISSIONS.VOICES_READ)
+  @ApiOperation({ summary: 'Get honest capability declaration for a voice (Phase 5).' })
+  @Get(':id/capabilities')
+  async getCapabilities(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id') id: string,
+  ) {
+    const capabilities = await this.voiceEngine.getVoiceCapabilities(principal.tenantId, id);
+
+    await this.auditLog.record({
+      principal,
+      action: 'voice.capabilities.requested',
+      resourceType: 'voice',
+      resourceId: id,
+    });
+
+    return { data: capabilities };
+  }
 }
