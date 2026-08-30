@@ -1,5 +1,3 @@
-import type { VoiceCloneProfile } from './voice-clone.types';
-
 /**
  * Phase 4: VoiceCloneAdapter Interface
  *
