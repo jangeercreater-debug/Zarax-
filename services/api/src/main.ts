@@ -52,6 +52,10 @@ async function bootstrap(): Promise<void> {
   // Security: disable x-powered-by header
   app.getHttpAdapter().getInstance().disable('x-powered-by');
 
+  // Increase JSON body limit for voice clone audio upload (max 5MB decoded = ~7MB base64)
+  app.use(require('express').json({ limit: '10mb' }));
+  app.use(require('express').urlencoded({ limit: '10mb', extended: true }));
+
   // CORS: restrict to known origins only
   app.enableCors({
     origin: ALLOWED_ORIGINS,
