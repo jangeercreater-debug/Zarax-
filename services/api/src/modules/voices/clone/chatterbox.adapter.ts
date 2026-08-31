@@ -157,9 +157,9 @@ export class ChatterboxAdapter implements VoiceCloneAdapter {
         if (body.detail?.message) errMsg = body.detail.message;
       } catch { /* ignore */ }
 
-      if (response.status === 401) errCode = CLONE_ERROR_CODES.CLONE_ACCESS_DENIED;
-      if (response.status === 503) errCode = CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE;
-
+      if (response.status === 401) errCode = CLONE_ERROR_CODES.CLONE_ACCESS_DENIED as never;
+      if (response.status === 503) errCode = CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE as never;
+      
       this.logger.error('ChatterboxAdapter: GPU service error', {
         status: response.status,
         errCode,
