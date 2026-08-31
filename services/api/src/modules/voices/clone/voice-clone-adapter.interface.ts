@@ -65,6 +65,21 @@ export interface VoiceCloneAdapter {
    * MUST NOT return fake/placeholder audio.
    */
   synthesizeFromClone(request: SynthesizeFromCloneRequest): Promise<Buffer>;
+  export interface SynthesizeFromCloneRequest {
+  text: string;
+  profile: VoiceCloneProfile;
+  speed?: number;
+  language?: string;
+  requestId?: string;
+  /** Phase 5 VoiceExpression spec — consumed by Chatterbox emotion exaggeration */
+  expression?: {
+    emotion?: string;
+    style?: string;
+    energy?: number;
+    intensity?: number;
+    pitch?: number;
+  };
+  }
 
   /** True only when actual GPU synthesis is available. */
   isSynthesisAvailable(): boolean;
@@ -80,4 +95,6 @@ export interface VoiceCloneProfile {
   embeddingDim: number | null;
   embeddingModel: string | null;
   audioMimeType: string;
+  /** Reference audio for Chatterbox zero-shot conditioning (base64 encoded) */
+  audioDataBase64?: string | null;
 }
