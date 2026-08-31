@@ -32,7 +32,7 @@ export interface TTSAdapter {
    * Used by Voice Library preview button.
    * May use a shorter/cheaper model if available.
    */
-  preview(providerVoiceId: string, sampleText?: string): Promise<Buffer>;
+  preview(providerVoiceId: string, sampleText?: string, speed?: number, language?: string): Promise<Buffer>;
 
   /**
    * Phase 5: Return honest capability declaration for this adapter.
