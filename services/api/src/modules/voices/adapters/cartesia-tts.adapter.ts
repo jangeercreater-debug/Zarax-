@@ -55,7 +55,7 @@ export class CartesiaTTSAdapter implements TTSAdapter {
     return this.callCartesia(providerVoiceId, text, format.sampleRate);
   }
 
-  async preview(providerVoiceId: string, sampleText?: string): Promise<Buffer> {
+  async preview(providerVoiceId: string, sampleText?: string, _speed?: number, _language?: string): Promise<Buffer> {
     if (!this.isConfigured()) {
       throw new VoiceError('TTS provider not configured', VOICE_ERROR_CODES.VOICE_PROVIDER_NOT_CONFIGURED);
     }
