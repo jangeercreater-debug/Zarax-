@@ -263,14 +263,73 @@ export class VoiceCloneService {
     this.logger.log('VoiceCloneService: profile deleted', { tenantId, profileId });
   }
 
-  async previewClone(_tenantId: string, _profileId: string): Promise<never> {
-    // CRITICAL: Never return fake audio.
-    // Synthesis requires Chatterbox GPU inference service (Phase 6).
-    throw new CloneError(
-      SYNTHESIS_UNAVAILABLE_MESSAGE,
-      CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE,
-      503,
-    );
+  async previewClone(tenantId: string, profileId: string, text?: string): Promise<Buffer> {
+    const profile = await this.getClone(tenantId, profileId);
+
+    if (!this.adapter.isSynthesisAvailable()) {
+      throw new CloneError(
+        SYNTHESIS_UNAVAILABLE_MESSAGE,
+        CLONE_ERROR_CODES.CLONE_SYNTHESIS_UNAVAILABLE,
+        503,
+      );
+    }
+
+    if (profile.status !== 'PROFILE_READY' && profile.status !== 'SYNTHESIS_READY') {
+      throw new CloneError(
+        `Voice profile status is '${profile.status}' — must be PROFILE_READY to synthesize.`,
+        CLONE_ERROR_CODES.CLONE_PROCESSING_FAILED,
+        400,
+      );
+    }
+
+    // Fetch full profile including audioDataBase64
+    const fullProfile = await this.prisma.voiceCloneProfile.findFirst({
+      where: { id: profileId, tenantId },
+      select: {
+        id: true, audioDataBase64: true, embeddingData: true,
+        embeddingDim: true, embeddingModel: true, audioMimeType: true,
+      },
+    });
+
+    if (!fullProfile?.audioDataBase64) {
+      throw new CloneError(
+        'Reference audio not available. Please re-upload the voice recording.',
+        CLONE_ERROR_CODES.CLONE_PROCESSING_FAILED,
+        400,
+      );
+    }
+
+    const previewText = (text ?? 'Hello! This is my cloned voice powered by Zarax.').slice(0, 500);
+
+    this.logger.log('VoiceCloneService: synthesis preview started', {
+      tenantId, profileId,
+    });
+
+    const audioBuffer = await this.adapter.synthesizeFromClone({
+      text: previewText,
+      profile: {
+        id: fullProfile.id,
+        embeddingData: fullProfile.embeddingData,
+        embeddingDim: fullProfile.embeddingDim,
+        embeddingModel: fullProfile.embeddingModel,
+        audioMimeType: fullProfile.audioMimeType,
+        audioDataBase64: fullProfile.audioDataBase64,
+      },
+      requestId: `preview-${profileId}`,
+      language: 'en',
+    });
+
+    // Update status to SYNTHESIS_READY after first successful synthesis
+    await this.prisma.voiceCloneProfile.update({
+      where: { id: profileId },
+      data: { status: 'SYNTHESIS_READY' as never, synthesisAvail: true },
+    });
+
+    this.logger.log('VoiceCloneService: synthesis preview complete', {
+      tenantId, profileId, audioBytes: audioBuffer.length,
+    });
+
+    return audioBuffer;
   }
 
   async healthCheck(): Promise<Record<string, unknown>> {
