@@ -4,7 +4,7 @@ import {
   Mic, Search, Play, Plus, Trash2, Edit2, Check,
   Globe, Sparkles, Volume2, Loader2, Wand2, Save,
   Star, Filter, X, Copy, AlertCircle, CheckCircle2,
-  Upload, Shield
+  Upload, Shield, Zap, Info
 } from "lucide-react";
 
 interface Voice {
@@ -14,6 +14,22 @@ interface Voice {
   provider: string | null; providerVoiceId: string | null;
   status: string; isPublic: boolean; isDefault: boolean;
   metadata: Record<string, unknown> | null;
+}
+
+interface VoiceCapability {
+  supported: 'REAL' | 'PARTIAL' | 'SPEC_ONLY' | 'UNSUPPORTED' | 'GPU_REQUIRED';
+  description: string;
+  range?: { min: number; max: number };
+  values?: string[];
+}
+
+interface VoiceCapabilities {
+  voiceId: string; provider: string; model: string;
+  realCapabilities: string[];
+  capabilities: Record<string, VoiceCapability>;
+  languages: string[];
+  gpuRequiredFor: string[];
+  honestSummary: string;
 }
 
 interface VoiceCandidate {
@@ -54,11 +70,34 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 const GENDER_ICON: Record<string, string> = { FEMALE: "♀", MALE: "♂", NEUTRAL: "◈" };
-
 const CLONE_STATUS_COLOR: Record<string, string> = {
   PROFILE_READY: "text-green-600", SYNTHESIS_UNAVAILABLE: "text-amber-600",
   FAILED: "text-red-600", PROCESSING: "text-blue-600",
   VALIDATING: "text-blue-600", INACTIVE: "text-gray-400",
+};
+
+const CAPABILITY_BADGE: Record<string, string> = {
+  REAL: "bg-green-100 text-green-700",
+  PARTIAL: "bg-yellow-100 text-yellow-700",
+  SPEC_ONLY: "bg-blue-100 text-blue-700",
+  GPU_REQUIRED: "bg-purple-100 text-purple-700",
+  UNSUPPORTED: "bg-gray-100 text-gray-500",
+};
+
+const LANGUAGES = [
+  { code: "", label: "Auto" },
+  { code: "en", label: "English" },
+  { code: "hi", label: "Hindi" },
+  { code: "hinglish", label: "Hinglish" },
+  { code: "en-GB", label: "English (UK)" },
+];
+
+const PREVIEW_TEXTS: Record<string, string> = {
+  "": "Hello! I am Zarax. How can I help you today?",
+  en: "Hello! I am Zarax. How can I help you today?",
+  hi: "Namaste! Main Zarax hoon. Aapki kaise madad kar sakti hoon?",
+  hinglish: "Namaste! Main Zarax hoon. Bataiye, main aapki kaise help kar sakti hoon?",
+  "en-GB": "Hello! I am Zarax. How may I assist you today?",
 };
 
 type Tab = "library" | "design" | "clone";
@@ -74,6 +113,14 @@ export default function VoicesPage() {
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Phase 5: expression controls per voice
+  const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+  const [capabilities, setCapabilities] = useState<VoiceCapabilities | null>(null);
+  const [previewText, setPreviewText] = useState("");
+  const [previewLang, setPreviewLang] = useState("");
+  const [previewSpeed, setPreviewSpeed] = useState(1.0);
+  const [showExpression, setShowExpression] = useState(false);
 
   // Design state
   const [designPrompt, setDesignPrompt] = useState("");
@@ -109,6 +156,14 @@ export default function VoicesPage() {
       .catch(() => setLoading(false));
   };
 
+  const loadCapabilities = async (voiceId: string) => {
+    try {
+      const res = await fetch(`/api/voices/${voiceId}/capabilities`, { credentials: "include" });
+      const j = await res.json() as { data?: VoiceCapabilities };
+      setCapabilities(j.data ?? null);
+    } catch { setCapabilities(null); }
+  };
+
   const loadCloneInfo = () => {
     fetch("/api/voices/clone/info", { credentials: "include" })
       .then(r => r.json()).then(j => setCloneInfo((j.data ?? null) as CloneInfo | null))
@@ -124,13 +179,32 @@ export default function VoicesPage() {
   useEffect(() => { if (tab === "library") load(); }, [search, genderFilter, langFilter, typeFilter, tab]);
   useEffect(() => { if (tab === "clone" && !cloneInfo) { loadCloneInfo(); loadCloneProfiles(); } }, [tab]);
 
-  const handlePreview = async (voice: Voice) => {
+  const handleVoiceSelect = async (voice: Voice) => {
+    if (selectedVoiceId === voice.id) {
+      setSelectedVoiceId(null); setCapabilities(null); setShowExpression(false);
+      return;
+    }
+    setSelectedVoiceId(voice.id);
+    setShowExpression(true);
+    setPreviewText(PREVIEW_TEXTS[voice.language] ?? PREVIEW_TEXTS.en);
+    setPreviewLang(voice.language ?? "");
+    setPreviewSpeed(1.0);
+    await loadCapabilities(voice.id);
+  };
+
+  const handlePreview = async (voice: Voice, customText?: string, speed?: number, lang?: string) => {
     if (!voice.providerVoiceId) { setPreviewError("No provider ID — preview unavailable."); return; }
     setPreviewing(voice.id); setPreviewError(null);
     try {
+      const sampleText = customText ?? PREVIEW_TEXTS[voice.language] ?? PREVIEW_TEXTS.en;
       const res = await fetch(`/api/voices/${voice.id}/preview`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ sampleText: `Hi! I am ${voice.name}. How can I help you today?` }),
+        credentials: "include",
+        body: JSON.stringify({
+          sampleText,
+          speed: speed ?? 1.0,
+          language: lang || voice.language || "en",
+        }),
       });
       if (!res.ok) { setPreviewError("Preview failed."); return; }
       const blob = await res.blob(); const url = URL.createObjectURL(blob);
@@ -166,7 +240,8 @@ export default function VoicesPage() {
     try {
       const res = await fetch("/api/voices/design/preview", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "include", body: JSON.stringify({ providerVoiceId: candidate.providerVoiceId, sampleText: candidate.previewText }),
+        credentials: "include",
+        body: JSON.stringify({ providerVoiceId: candidate.providerVoiceId, sampleText: candidate.previewText }),
       });
       if (!res.ok) { setPreviewError("Preview failed."); return; }
       const blob = await res.blob(); const url = URL.createObjectURL(blob);
@@ -195,20 +270,14 @@ export default function VoicesPage() {
     if (!cloneAudioFile) { setCloneError("Please select an audio file."); return; }
     if (!consentChecked || !selfVoiceChecked) { setCloneError("You must confirm both consent statements."); return; }
     if (!cloneInfo) { setCloneError("Clone info not loaded."); return; }
-
     setCloning(true); setCloneError(null); setCloneSuccess(null);
-
     try {
       const audioBase64 = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1] ?? "");
-        };
+        reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
         reader.onerror = () => reject(new Error("Failed to read file"));
         reader.readAsDataURL(cloneAudioFile);
       });
-
       const res = await fetch("/api/voices/clone", {
         method: "POST", headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -218,17 +287,11 @@ export default function VoicesPage() {
           consentText: cloneInfo.consentStatement,
           consentVersion: cloneInfo.consentVersion,
           consentedAt: new Date().toISOString(),
-          isSelfVoice: selfVoiceChecked,
-          language: "en",
+          isSelfVoice: selfVoiceChecked, language: "en",
         }),
       });
-
       const j = await res.json() as { data?: CloneProfile; message?: string; cloneErrorCode?: string };
-      if (!res.ok) {
-        setCloneError(j.message ?? j.cloneErrorCode ?? "Clone initiation failed.");
-        return;
-      }
-
+      if (!res.ok) { setCloneError(j.message ?? j.cloneErrorCode ?? "Clone initiation failed."); return; }
       setCloneSuccess(j.data ?? null);
       setCloneName(""); setCloneDesc(""); setCloneAudioFile(null);
       setConsentChecked(false); setSelfVoiceChecked(false);
@@ -236,9 +299,7 @@ export default function VoicesPage() {
       loadCloneProfiles();
     } catch (err) {
       setCloneError(err instanceof Error ? err.message : "Clone request failed.");
-    } finally {
-      setCloning(false);
-    }
+    } finally { setCloning(false); }
   };
 
   const handleDeleteClone = async (id: string, name: string) => {
@@ -246,6 +307,12 @@ export default function VoicesPage() {
     await fetch(`/api/voices/clone/${id}`, { method: "DELETE", credentials: "include" });
     setCloneProfiles(p => p.filter(x => x.id !== id));
   };
+
+  const capBadge = (level: string) => (
+    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${CAPABILITY_BADGE[level] ?? "bg-gray-100 text-gray-500"}`}>
+      {level.replace(/_/g, " ")}
+    </span>
+  );
 
   return (
     <div className="space-y-6">
@@ -323,7 +390,11 @@ export default function VoicesPage() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {voices.map(voice => (
-                <div key={voice.id} className={`rounded-xl border bg-card p-5 space-y-3 hover:shadow-md transition-shadow ${voice.isDefault ? "border-primary/30 ring-1 ring-primary/20" : ""}`}>
+                <div key={voice.id}
+                  className={`rounded-xl border bg-card p-5 space-y-3 hover:shadow-md transition-shadow cursor-pointer
+                    ${voice.isDefault ? "border-primary/30 ring-1 ring-primary/20" : ""}
+                    ${selectedVoiceId === voice.id ? "border-primary ring-2 ring-primary/30" : ""}`}
+                  onClick={() => handleVoiceSelect(voice)}>
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{GENDER_ICON[voice.gender] ?? "◈"}</span>
@@ -338,7 +409,7 @@ export default function VoicesPage() {
                       </div>
                     </div>
                     {voice.provider === 'zarax' && (
-                      <span className="text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 px-1.5 py-0.5 rounded-full font-medium">Zarax TTS</span>
+                      <span className="text-xs bg-violet-100 text-violet-700 dark:bg-violet-900/30 px-1.5 py-0.5 rounded-full font-medium">Zarax TTS</span>
                     )}
                   </div>
                   {voice.description && <p className="text-xs text-muted-foreground line-clamp-2">{voice.description}</p>}
@@ -347,7 +418,7 @@ export default function VoicesPage() {
                     {voice.style && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Sparkles className="h-3 w-3" />{voice.style}</span>}
                     {voice.accent && <span className="text-xs text-muted-foreground">· {voice.accent}</span>}
                   </div>
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 pt-1" onClick={e => e.stopPropagation()}>
                     <button onClick={() => handlePreview(voice)} disabled={previewing === voice.id}
                       className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50">
                       {previewing === voice.id ? <><Loader2 className="h-3 w-3 animate-spin" /> Playing...</> : <><Play className="h-3 w-3" /> Preview</>}
@@ -365,8 +436,104 @@ export default function VoicesPage() {
               ))}
             </div>
           )}
+
+          {/* Phase 5: Expression panel for selected voice */}
+          {showExpression && selectedVoiceId && (() => {
+            const voice = voices.find(v => v.id === selectedVoiceId);
+            if (!voice) return null;
+            return (
+              <div className="rounded-xl border bg-card p-6 space-y-5">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" /> Voice Controls — {voice.name}
+                  </h3>
+                  <button onClick={() => { setShowExpression(false); setSelectedVoiceId(null); }}
+                    className="text-xs text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                </div>
+
+                {/* Capabilities */}
+                {capabilities && (
+                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                    <p className="text-xs font-medium flex items-center gap-1"><Info className="h-3 w-3" /> Capabilities ({capabilities.model})</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {Object.entries(capabilities.capabilities).map(([key, cap]) => (
+                        <div key={key} className="flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground capitalize">{key}:</span>
+                          {capBadge(cap.supported)}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground italic">{capabilities.honestSummary}</p>
+                  </div>
+                )}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {/* Custom preview text */}
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-medium">Preview Text (custom)</label>
+                    <textarea value={previewText} onChange={e => setPreviewText(e.target.value)}
+                      className="flex w-full rounded-md border bg-background px-3 py-2 text-sm min-h-[60px] resize-none"
+                      maxLength={200} placeholder="Enter custom preview text..." />
+                    <span className="text-xs text-muted-foreground">{previewText.length}/200</span>
+                  </div>
+
+                  {/* Language selector */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Language
+                      {capBadge('REAL')}
+                    </label>
+                    <select value={previewLang}
+                      onChange={e => { setPreviewLang(e.target.value); setPreviewText(PREVIEW_TEXTS[e.target.value] ?? previewText); }}
+                      className="flex h-9 w-full rounded-md border bg-background px-3 py-1.5 text-sm">
+                      {LANGUAGES.map(l => <option key={l.code} value={l.code}>{l.label}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Speed control — REAL */}
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium flex items-center gap-1">
+                      Speed: {previewSpeed.toFixed(2)}x {capBadge('REAL')}
+                    </label>
+                    <input type="range" min="0.5" max="2.0" step="0.05"
+                      value={previewSpeed} onChange={e => setPreviewSpeed(Number(e.target.value))}
+                      className="w-full" />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>0.5x (slow)</span><span>2.0x (fast)</span>
+                    </div>
+                  </div>
+
+                  {/* GPU-required controls — shown but clearly labeled */}
+                  <div className="sm:col-span-2 rounded-lg border border-dashed p-3 space-y-2">
+                    <p className="text-xs font-medium flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3 text-purple-500" />
+                      Advanced Controls — Available in Phase 6 (GPU Required)
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {["Emotion", "Style", "Energy"].map(ctrl => (
+                        <div key={ctrl} className="space-y-1">
+                          <label className="text-xs text-muted-foreground flex items-center gap-1">
+                            {ctrl} {capBadge('GPU_REQUIRED')}
+                          </label>
+                          <select disabled className="flex h-8 w-full rounded-md border bg-muted px-2 py-1 text-xs opacity-50 cursor-not-allowed">
+                            <option>GPU required</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <button onClick={() => handlePreview(voice, previewText, previewSpeed, previewLang)}
+                  disabled={previewing === voice.id}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                  {previewing === voice.id ? <><Loader2 className="h-4 w-4 animate-spin" /> Playing...</> : <><Play className="h-4 w-4" /> Preview with Controls</>}
+                </button>
+              </div>
+            );
+          })()}
+
           <p className="text-xs text-muted-foreground text-center">
-            {voices.length} voice{voices.length !== 1 ? "s" : ""} · Zarax TTS powered by Kokoro-82M (Apache 2.0)
+            {voices.length} voice{voices.length !== 1 ? "s" : ""} · Click a voice to open expression controls · Zarax TTS powered by Kokoro-82M (Apache 2.0)
           </p>
         </div>
       )}
@@ -454,7 +621,6 @@ export default function VoicesPage() {
       {/* ── CLONE TAB ── */}
       {tab === "clone" && (
         <div className="space-y-6">
-          {/* Info banner */}
           {cloneInfo && !cloneInfo.synthesisAvailable && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-1">
               <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
@@ -467,7 +633,6 @@ export default function VoicesPage() {
             </div>
           )}
 
-          {/* Clone form */}
           <div className="rounded-xl border bg-card p-6 space-y-5">
             <div>
               <h2 className="text-base font-semibold flex items-center gap-2"><Copy className="h-4 w-4 text-primary" /> Clone Your Voice</h2>
@@ -476,12 +641,8 @@ export default function VoicesPage() {
 
             {cloneSuccess && (
               <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-                  <CheckCircle2 className="h-4 w-4" /> Voice Profile Created
-                </div>
-                <p className="text-xs text-green-600">
-                  "{cloneSuccess.name}" — Status: <span className="font-medium">{cloneSuccess.status}</span>
-                </p>
+                <div className="flex items-center gap-2 text-sm font-semibold text-green-700"><CheckCircle2 className="h-4 w-4" /> Voice Profile Created</div>
+                <p className="text-xs text-green-600">"{cloneSuccess.name}" — Status: <span className="font-medium">{cloneSuccess.status}</span></p>
                 <p className="text-xs text-green-600">{cloneInfo?.synthesisUnavailableMessage}</p>
               </div>
             )}
@@ -523,24 +684,19 @@ export default function VoicesPage() {
               </div>
             </div>
 
-            {/* Consent */}
             <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Shield className="h-4 w-4 text-primary" /> Required Consent
-              </div>
+              <div className="flex items-center gap-2 text-sm font-semibold"><Shield className="h-4 w-4 text-primary" /> Required Consent</div>
               {cloneInfo && (
                 <div className="text-xs text-muted-foreground bg-background rounded-md p-3 whitespace-pre-line border font-mono">
                   {cloneInfo.consentStatement}
                 </div>
               )}
               <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={consentChecked} onChange={e => setConsentChecked(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border" />
+                <input type="checkbox" checked={consentChecked} onChange={e => setConsentChecked(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border" />
                 <span className="text-sm">I have read and agree to the consent statement above.</span>
               </label>
               <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={selfVoiceChecked} onChange={e => setSelfVoiceChecked(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border" />
+                <input type="checkbox" checked={selfVoiceChecked} onChange={e => setSelfVoiceChecked(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border" />
                 <span className="text-sm font-medium">I confirm this is my own voice. I am not cloning the voice of another person.</span>
               </label>
             </div>
@@ -550,13 +706,9 @@ export default function VoicesPage() {
               className="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               {cloning ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating Profile...</> : <><Copy className="h-4 w-4" /> Create Voice Profile</>}
             </button>
-
-            <p className="text-xs text-muted-foreground text-center">
-              Model: Chatterbox Multilingual V3 (MIT) · No fake audio generated · Synthesis requires GPU (Phase 6)
-            </p>
+            <p className="text-xs text-muted-foreground text-center">Model: Chatterbox Multilingual V3 (MIT) · No fake audio generated · Synthesis requires GPU (Phase 6)</p>
           </div>
 
-          {/* Existing clone profiles */}
           {cloneProfiles.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-sm font-semibold">Your Voice Profiles</h3>
@@ -571,16 +723,12 @@ export default function VoicesPage() {
                     </div>
                     {profile.description && <p className="text-xs text-muted-foreground">{profile.description}</p>}
                     <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{profile.audioMimeType}</span>
-                      <span>·</span>
-                      <span>{profile.audioDurationS.toFixed(1)}s</span>
-                      <span>·</span>
+                      <span>{profile.audioMimeType}</span><span>·</span>
+                      <span>{profile.audioDurationS.toFixed(1)}s</span><span>·</span>
                       <span>{(profile.audioSizeBytes / 1024).toFixed(0)}KB</span>
                     </div>
                     {!profile.synthesisAvail && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        Profile ready · Synthesis awaiting GPU infrastructure (Phase 6)
-                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Profile ready · Synthesis awaiting GPU infrastructure (Phase 6)</p>
                     )}
                   </div>
                   <button onClick={() => handleDeleteClone(profile.id, profile.name)}
