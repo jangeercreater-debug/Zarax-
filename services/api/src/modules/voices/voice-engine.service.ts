@@ -270,7 +270,7 @@ export class VoiceEngineService {
     };
   }
 
-  async previewVoice(tenantId: string, voiceId: string, sampleText?: string): Promise<Buffer> {
+  async previewVoice(tenantId: string, voiceId: string, sampleText?: string, speed?: number, language?: string): Promise<Buffer> {
     const adapter = this.requireAdapter();
     const voice = await this.getVoice(tenantId, voiceId);
 
@@ -286,7 +286,8 @@ export class VoiceEngineService {
       );
     }
 
-    return adapter.preview(voice.providerVoiceId, sampleText ?? undefined);
+    // Phase 5: pass speed (REAL) and language (REAL) to adapter
+    return adapter.preview(voice.providerVoiceId, sampleText, speed, language);
   }
 
   /** Returns the active TTSAdapter for direct use by VoiceDesignService. */
