@@ -1,5 +1,3 @@
-import type { SynthesizeRequest } from '../dto/voice.types';
-
 /**
  * Phase 1: VoiceCloneAdapter Interface
  * Phase 6: Updated with audioDataBase64 + VoiceExpression support
