@@ -73,7 +73,7 @@ export class ZaraxTTSAdapter implements TTSAdapter {
     }, SYNTHESIS_TIMEOUT_MS);
   }
 
-  async preview(providerVoiceId: string, sampleText?: string): Promise<Buffer> {
+  async preview(providerVoiceId: string, sampleText?: string, speed?: number, language?: string): Promise<Buffer> {
     if (!this.isConfigured()) {
       throw new TtsError(
         'Zarax TTS Inference Service URL not configured.',
