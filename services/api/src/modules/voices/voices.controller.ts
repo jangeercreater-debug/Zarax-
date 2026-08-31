@@ -121,6 +121,8 @@ export class VoicesController {
       principal.tenantId,
       id,
       dto.sampleText,
+      dto.speed,
+      dto.language,
     );
 
     res.setHeader('Content-Type', 'audio/wav');
