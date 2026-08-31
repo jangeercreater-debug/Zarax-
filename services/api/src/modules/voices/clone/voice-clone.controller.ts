@@ -1,8 +1,8 @@
 import {
   Body, Controller, Delete, Get, HttpCode,
-  HttpStatus, Param, Post, Req,
+  HttpStatus, Param, Post, Req, Res,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditLogService } from '@zarax/audit-log';
 import { CurrentPrincipal, RequirePermission } from '@zarax/shared-auth';
@@ -21,7 +21,7 @@ export class VoiceCloneController {
   ) {}
 
   @RequirePermission(PERMISSIONS.VOICES_READ)
-  @ApiOperation({ summary: 'Get consent statement text + model metadata for clone UI.' })
+  @ApiOperation({ summary: 'Get consent statement + model metadata for clone UI.' })
   @Get('info')
   getInfo() {
     return {
@@ -121,15 +121,36 @@ export class VoiceCloneController {
   }
 
   @RequirePermission(PERMISSIONS.VOICES_PREVIEW)
-  @ApiOperation({ summary: 'Preview cloned voice — returns SYNTHESIS_UNAVAILABLE until GPU available.' })
+  @ApiOperation({
+    summary: 'Preview cloned voice — returns real WAV audio when GPU available, SYNTHESIS_UNAVAILABLE otherwise.',
+  })
   @Post(':id/preview')
   @HttpCode(HttpStatus.OK)
   async previewClone(
     @CurrentPrincipal() principal: Principal,
     @Param('id') id: string,
-  ) {
-    // This always returns structured unavailable — never fake audio
-    await this.cloneService.previewClone(principal.tenantId, id);
+    @Body() body: { text?: string },
+    @Res() res: Response,
+  ): Promise<void> {
+    const audioBuffer = await this.cloneService.previewClone(
+      principal.tenantId,
+      id,
+      body.text,
+    );
+
+    await this.auditLog.record({
+      principal,
+      action: 'voice.clone.previewed',
+      resourceType: 'voice_clone',
+      resourceId: id,
+      metadata: { synthesisAvail: true, model: 'chatterbox-multilingual-v3' },
+    });
+
+    res.setHeader('Content-Type', 'audio/wav');
+    res.setHeader('Content-Length', audioBuffer.length);
+    res.setHeader('X-Voice-Clone-Id', id);
+    res.setHeader('X-Model', 'chatterbox-multilingual-v3');
+    res.end(audioBuffer);
   }
 
   @RequirePermission(PERMISSIONS.VOICES_READ)
