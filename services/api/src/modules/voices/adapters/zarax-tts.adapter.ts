@@ -95,11 +95,17 @@ export class ZaraxTTSAdapter implements TTSAdapter {
       langCode,
     });
 
+    // Phase 5: speed (REAL) and language (REAL) wired to Kokoro
+    const finalSpeed = speed ? Math.min(Math.max(speed, 0.5), 2.0) : 1.0;
+    const finalLangCode = language
+      ? (KOKORO_LANGUAGE_MAP[language] ?? langCode)
+      : langCode;
+
     return this.callInferenceService('/synthesize', {
       text,
       voice_id: providerVoiceId,
-      speed: 1.0,
-      lang_code_override: langCode,
+      speed: finalSpeed,
+      lang_code_override: finalLangCode,
       format: 'wav',
     }, PREVIEW_TIMEOUT_MS);
   }
