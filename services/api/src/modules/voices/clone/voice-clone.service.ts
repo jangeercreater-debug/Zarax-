@@ -69,16 +69,8 @@ export class VoiceCloneService {
     private readonly adapter: ChatterboxAdapter,
   ) {}
 
-  /**
-   * Full clone initiation flow:
-   * 1. Verify consent (hash check)
-   * 2. Validate audio (format, size, duration, silence)
-   * 3. Extract speaker embedding
-   * 4. Create VoiceCloneConsent + VoiceCloneProfile in DB
-   * 5. Clear raw audio from memory (never persisted in logs)
-   */
   async initiateClone(input: InitiateCloneInput): Promise<VoiceCloneRecord> {
-    // ── 1. Consent verification ────────────────────────────────────────────
+    // ── 1. Consent verification ─────────────────────────────────────────────
     if (!input.isSelfVoice) {
       throw new CloneError(
         'Voice cloning requires confirmation that this is your own voice.',
@@ -102,7 +94,7 @@ export class VoiceCloneService {
       );
     }
 
-    // ── 2. Audio validation ────────────────────────────────────────────────
+    // ── 2. Audio validation ─────────────────────────────────────────────────
     const validation = await this.audioValidator.validate(input.audioBase64, input.audioMimeType);
     if (!validation.valid) {
       throw new CloneError(
@@ -111,7 +103,7 @@ export class VoiceCloneService {
       );
     }
 
-    // ── 3. Duplicate name check ────────────────────────────────────────────
+    // ── 3. Duplicate name check ─────────────────────────────────────────────
     const existing = await this.prisma.voiceCloneProfile.findFirst({
       where: {
         tenantId: input.tenantId,
@@ -127,7 +119,7 @@ export class VoiceCloneService {
       );
     }
 
-    // ── 4. Speaker embedding extraction ───────────────────────────────────
+    // ── 4. Speaker embedding extraction ────────────────────────────────────
     const audioBuffer = Buffer.from(input.audioBase64, 'base64');
     let embeddingResult;
     try {
@@ -145,7 +137,7 @@ export class VoiceCloneService {
       throw new CloneError('Voice profile extraction failed.', CLONE_ERROR_CODES.CLONE_PROCESSING_FAILED, 500);
     }
 
-    // ── 5. Persist consent + profile ──────────────────────────────────────
+    // ── 5. Persist consent + profile ───────────────────────────────────────
     const consentedAt = new Date(input.consentedAt);
 
     const consent = await this.prisma.voiceCloneConsent.create({
@@ -174,8 +166,6 @@ export class VoiceCloneService {
         audioDurationS: validation.durationS!,
         audioSizeBytes: validation.sizeBytes!,
         audioSha256: validation.sha256!,
-        // Store audio temporarily for future GPU processing (Phase 6)
-        // audioDataBase64 is encrypted at rest by Neon
         audioDataBase64: input.audioBase64,
         embeddingModel: embeddingResult.embeddingModel,
         embeddingDim: embeddingResult.embeddingDim,
@@ -250,7 +240,6 @@ export class VoiceCloneService {
       throw new CloneError('Cannot delete another user\'s voice clone.', CLONE_ERROR_CODES.CLONE_ACCESS_DENIED, 403);
     }
 
-    // Soft delete + clear audio data for privacy
     await this.prisma.voiceCloneProfile.update({
       where: { id: profileId },
       data: {
@@ -260,7 +249,7 @@ export class VoiceCloneService {
       },
     });
 
-    this.logger.log('VoiceCloneService: profile deleted', { tenantId, profileId });
+    this.logger.log('VoiceCloneService: profile deleted + audio cleared', { tenantId, profileId });
   }
 
   async previewClone(tenantId: string, profileId: string, text?: string): Promise<Buffer> {
@@ -282,7 +271,6 @@ export class VoiceCloneService {
       );
     }
 
-    // Fetch full profile including audioDataBase64
     const fullProfile = await this.prisma.voiceCloneProfile.findFirst({
       where: { id: profileId, tenantId },
       select: {
@@ -319,7 +307,6 @@ export class VoiceCloneService {
       language: 'en',
     });
 
-    // Update status to SYNTHESIS_READY after first successful synthesis
     await this.prisma.voiceCloneProfile.update({
       where: { id: profileId },
       data: { status: 'SYNTHESIS_READY' as never, synthesisAvail: true },
@@ -341,7 +328,6 @@ export class VoiceCloneService {
       license: this.adapter.license,
       ...health,
       gpuVramRequiredGB: CLONING_MODEL_METADATA.gpuVramRequiredGB,
-      synthesisBlockedReason: CLONING_MODEL_METADATA.synthesisBlockedReason,
     };
   }
 
@@ -361,9 +347,7 @@ export class VoiceCloneService {
       cloningModelVer: profile.cloningModelVer ?? null,
       failureReason: profile.failureReason ?? null,
       voiceId: profile.voiceId ?? null,
-      synthesisStatus: profile.synthesisAvail
-        ? 'SYNTHESIS_READY'
-        : 'SYNTHESIS_UNAVAILABLE',
+      synthesisStatus: profile.synthesisAvail ? 'SYNTHESIS_READY' : 'SYNTHESIS_UNAVAILABLE',
     };
   }
-}
+  }
