@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleRouteError } from "@/lib/route-handler";
 import { getAccessToken } from "@/lib/auth-cookies";
 import { BACKEND_URL } from "@/lib/server-api-client";
-import Anthropic from "@anthropic-ai/sdk";
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-});
 
 const SYSTEM_PROMPT = `You are a helpful AI assistant speaking in the user's own cloned voice.
 Keep responses SHORT — 1-2 sentences maximum.
@@ -31,22 +26,43 @@ export async function POST(
       return NextResponse.json({ error: "Text required" }, { status: 400 });
     }
 
-    // Step 1: Claude se jawab lo
+    const apiKey = process.env.ANTHROPIC_API_KEY ?? "";
+    if (!apiKey) {
+      return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
+    }
+
+    // Step 1: Claude se jawab lo (direct fetch — no SDK needed)
     const messages = [
-      ...history.slice(-6), // last 3 turns context
+      ...history.slice(-6),
       { role: "user" as const, content: text },
     ];
 
-    const claudeResponse = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 150,
-      system: SYSTEM_PROMPT,
-      messages,
+    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 150,
+        system: SYSTEM_PROMPT,
+        messages,
+      }),
     });
 
-    const responseText = claudeResponse.content
-      .filter(b => b.type === "text")
-      .map(b => b.type === "text" ? b.text : "")
+    if (!claudeRes.ok) {
+      return NextResponse.json({ error: "Claude API error" }, { status: 500 });
+    }
+
+    const claudeData = await claudeRes.json() as {
+      content: Array<{ type: string; text: string }>;
+    };
+
+    const responseText = claudeData.content
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
       .join("") || "Mujhe samajh nahi aaya, dobara bolein.";
 
     // Step 2: Cloned voice mein synthesize karo
@@ -64,11 +80,9 @@ export async function POST(
     );
 
     if (!audioResponse.ok) {
-      // GPU unavailable — return text only
       return NextResponse.json({ text: responseText, audioAvailable: false });
     }
 
-    // Step 3: Audio + text dono return karo
     const audioBuffer = await audioResponse.arrayBuffer();
     const audioBase64 = Buffer.from(audioBuffer).toString("base64");
 
