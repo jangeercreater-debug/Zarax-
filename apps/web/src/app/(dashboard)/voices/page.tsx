@@ -316,7 +316,7 @@ export default function VoicesPage() {
       setChatMessages(prev => [...prev, assistantMsg]);
 
       // Update history
-      chatHistory.current = [...chatHistory.current, { role: "user", content: text }, { role: "assistant", content: data.text }].slice(-10);
+      chatHistory.current = [...chatHistory.current, { role: "user" as const, content: text }, { role: "assistant" as const, content: data.text ?? "" }].slice(-10);
 
       // Play audio
       if (data.audioAvailable && data.audioBase64) {
