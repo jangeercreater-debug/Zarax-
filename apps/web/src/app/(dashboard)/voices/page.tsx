@@ -140,7 +140,8 @@ export default function VoicesPage() {
   const [isListening, setIsListening] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<InstanceType<typeof window.SpeechRecognition> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
   const chatHistory = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   const load = () => {
