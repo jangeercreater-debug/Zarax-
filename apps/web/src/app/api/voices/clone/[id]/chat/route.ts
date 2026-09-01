@@ -1,0 +1,84 @@
+import { NextRequest, NextResponse } from "next/server";
+import { handleRouteError } from "@/lib/route-handler";
+import { getAccessToken } from "@/lib/auth-cookies";
+import { BACKEND_URL } from "@/lib/server-api-client";
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+});
+
+const SYSTEM_PROMPT = `You are a helpful AI assistant speaking in the user's own cloned voice.
+Keep responses SHORT — 1-2 sentences maximum.
+Match the language the user speaks in (Hindi, English, or Hinglish).
+Be natural, warm, and conversational — like a real human.
+Never say you are an AI unless directly asked.
+If user speaks Hindi → reply in Hindi.
+If user speaks English → reply in English.
+If user speaks Hinglish → reply in Hinglish.`;
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+): Promise<NextResponse> {
+  try {
+    const { text, history = [] } = await req.json() as {
+      text: string;
+      history: Array<{ role: "user" | "assistant"; content: string }>;
+    };
+
+    if (!text?.trim()) {
+      return NextResponse.json({ error: "Text required" }, { status: 400 });
+    }
+
+    // Step 1: Claude se jawab lo
+    const messages = [
+      ...history.slice(-6), // last 3 turns context
+      { role: "user" as const, content: text },
+    ];
+
+    const claudeResponse = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 150,
+      system: SYSTEM_PROMPT,
+      messages,
+    });
+
+    const responseText = claudeResponse.content
+      .filter(b => b.type === "text")
+      .map(b => b.type === "text" ? b.text : "")
+      .join("") || "Mujhe samajh nahi aaya, dobara bolein.";
+
+    // Step 2: Cloned voice mein synthesize karo
+    const accessToken = getAccessToken();
+    const audioResponse = await fetch(
+      `${BACKEND_URL}/v1/voices/clone/${params.id}/preview`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ text: responseText }),
+      }
+    );
+
+    if (!audioResponse.ok) {
+      // GPU unavailable — return text only
+      return NextResponse.json({ text: responseText, audioAvailable: false });
+    }
+
+    // Step 3: Audio + text dono return karo
+    const audioBuffer = await audioResponse.arrayBuffer();
+    const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+
+    return NextResponse.json({
+      text: responseText,
+      audioBase64,
+      audioAvailable: true,
+    });
+
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
