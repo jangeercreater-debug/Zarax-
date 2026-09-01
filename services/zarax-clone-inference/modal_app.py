@@ -26,15 +26,11 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "chatterbox-tts==0.1.1",
-        "torch==2.4.0",
-        "torchaudio==2.4.0",
-        "fastapi[standard]==0.115.6",
-        "numpy==1.26.4",
-        "soundfile==0.12.1",
+        "fastapi[standard]>=0.111.0",
+        "soundfile>=0.12.1",
     )
     .env({"HF_HOME": "/models/hf_cache"})
 )
-
 
 @app.cls(
     gpu="T4",
