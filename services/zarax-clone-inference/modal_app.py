@@ -8,7 +8,6 @@ GPU: T4 (dev) / A10 (production)
 Architecture: scale-to-zero serverless, model cached in Modal Volume
 
 IMPORTANT:
-- This is Zarax's OWN inference service running OUR OWN copy of Chatterbox.
 - Modal provides GPU infrastructure ONLY — no third-party TTS API is used.
 - Speech generation happens entirely inside this container.
 - Authentication: ZARAX_CLONE_SERVICE_TOKEN required on every request.
@@ -17,15 +16,11 @@ IMPORTANT:
 
 import modal
 
-# ── App + Volume ──────────────────────────────────────────────────────────────
-
 app = modal.App("zarax-clone-inference")
 
 model_volume = modal.Volume.from_name("zarax-chatterbox-models", create_if_missing=True)
 
 zarax_secret = modal.Secret.from_name("zarax-clone-secret")
-
-# ── Docker image ──────────────────────────────────────────────────────────────
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -40,7 +35,6 @@ image = (
     .env({"HF_HOME": "/models/hf_cache"})
 )
 
-# ── Inference class ───────────────────────────────────────────────────────────
 
 @app.cls(
     gpu="T4",
@@ -77,11 +71,11 @@ class ZaraxCloneInference:
             return False
         return token == expected
 
-    @modal.web_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET")
     def health(self):
         return {"status": "ok", "service": "zarax-clone-inference", "version": "1.0.0"}
 
-    @modal.web_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET")
     def ready(self):
         from fastapi import HTTPException
         if getattr(self, "model_loaded", False):
@@ -96,7 +90,7 @@ class ZaraxCloneInference:
             "message": "Chatterbox model is still loading.",
         })
 
-    @modal.web_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST")
     def synthesize(self, request: dict):
         import base64
         import io
@@ -203,3 +197,4 @@ class ZaraxCloneInference:
                 os.unlink(tmp_path)
             except Exception:
                 pass
+              
