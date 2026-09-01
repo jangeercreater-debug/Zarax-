@@ -1,0 +1,39 @@
+name: Deploy Zarax Clone Inference to Modal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/zarax-clone-inference/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Create Modal Secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal secret create zarax-clone-secret \
+            ZARAX_CLONE_SERVICE_TOKEN="${{ secrets.ZARAX_CLONE_SERVICE_TOKEN }}" \
+            --force || true
+
+      - name: Deploy to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd services/zarax-clone-inference
+          modal deploy modal_app.py
