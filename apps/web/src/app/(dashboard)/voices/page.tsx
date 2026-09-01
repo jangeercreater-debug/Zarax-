@@ -727,14 +727,44 @@ export default function VoicesPage() {
                       <span>{profile.audioDurationS.toFixed(1)}s</span><span>·</span>
                       <span>{(profile.audioSizeBytes / 1024).toFixed(0)}KB</span>
                     </div>
-                    {!profile.synthesisAvail && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">Profile ready · Synthesis awaiting GPU infrastructure (Phase 6)</p>
+                    {profile.status === 'SYNTHESIS_READY' && (
+                      <p className="text-xs text-green-600">✅ Synthesis ready — GPU active</p>
+                    )}
+                    {profile.status === 'PROFILE_READY' && !profile.synthesisAvail && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">Profile ready · GPU synthesis available — tap Preview</p>
                     )}
                   </div>
                   <button onClick={() => handleDeleteClone(profile.id, profile.name)}
                     className="rounded-md border p-1.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 flex-shrink-0">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
+                  {(profile.status === 'PROFILE_READY' || profile.status === 'SYNTHESIS_READY') && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/voices/clone/${profile.id}/preview`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ text: "Hello! This is my cloned voice powered by Zarax." }),
+                          });
+                          if (!res.ok) {
+                            const e = await res.json().catch(() => ({})) as { message?: string };
+                            alert(e.message ?? "Preview failed");
+                            return;
+                          }
+                          const blob = await res.blob();
+                          const url = URL.createObjectURL(blob);
+                          const audio = new Audio(url);
+                          audio.onended = () => URL.revokeObjectURL(url);
+                          await audio.play();
+                        } catch { alert("Preview failed"); }
+                      }}
+                      className="rounded-md border p-1.5 hover:bg-primary/10 hover:text-primary flex-shrink-0"
+                      title="Preview cloned voice">
+                      <Play className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
