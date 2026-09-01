@@ -36,4 +36,4 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: |
           cd services/zarax-clone-inference
-          modal deploy modal_app.py
+          modal deploy modal_app.py --force-update || modal deploy modal_app.py
