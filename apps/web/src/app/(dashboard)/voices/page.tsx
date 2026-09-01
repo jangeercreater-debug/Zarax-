@@ -330,7 +330,9 @@ export default function VoicesPage() {
     if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
       setChatError("Browser speech recognition not supported. Type instead."); return;
     }
-    const SR = (window as unknown as { SpeechRecognition?: typeof SpeechRecognition; webkitSpeechRecognition?: typeof SpeechRecognition }).SpeechRecognition ?? (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
     if (!SR) return;
     const recognition = new SR();
     recognition.continuous = false; recognition.interimResults = false; recognition.lang = "hi-IN";
