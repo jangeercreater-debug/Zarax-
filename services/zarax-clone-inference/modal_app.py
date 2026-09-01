@@ -26,7 +26,7 @@ app = modal.App("zarax-clone-inference")
 model_volume = modal.Volume.from_name("zarax-chatterbox-models", create_if_missing=True)
 
 # Modal Secret: ZARAX_CLONE_SERVICE_TOKEN stored securely — never in source code.
-zarax_secret = modal.Secret.from_name("zarax-clone-secret", required=False)
+zarax_secret = modal.Secret.from_name("zarax-clone-secret")
 
 # ── Docker image ──────────────────────────────────────────────────────────────
 # Pre-install chatterbox-tts and dependencies in image layer for fast cold start.
