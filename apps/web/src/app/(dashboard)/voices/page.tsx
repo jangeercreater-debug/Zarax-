@@ -327,18 +327,16 @@ export default function VoicesPage() {
   };
 
   const startListening = () => {
-    if (!("webkitSpeechRecognition" in window || "SpeechRecognition" in window)) {
-      setChatError("Browser speech recognition not supported. Type instead."); return;
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const w = window as any;
     const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) { setChatError("Browser speech recognition not supported. Type instead."); return; }
     const recognition = new SR();
     recognition.continuous = false; recognition.interimResults = false; recognition.lang = "hi-IN";
     recognition.onstart = () => setIsListening(true);
     recognition.onend = () => setIsListening(false);
-    recognition.onresult = (e: SpeechRecognitionEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (e: any) => {
       const transcript = e.results[0]?.[0]?.transcript ?? "";
       if (transcript) sendChatMessage(transcript);
     };
@@ -346,7 +344,7 @@ export default function VoicesPage() {
     recognitionRef.current = recognition;
     recognition.start();
   };
-
+  
   const stopListening = () => { recognitionRef.current?.stop(); setIsListening(false); };
 
   const capBadge = (level: string) => (
