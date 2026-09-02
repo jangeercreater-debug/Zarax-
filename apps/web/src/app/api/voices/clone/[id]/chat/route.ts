@@ -3,14 +3,14 @@ import { handleRouteError } from "@/lib/route-handler";
 import { getAccessToken } from "@/lib/auth-cookies";
 import { BACKEND_URL } from "@/lib/server-api-client";
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant speaking in the user's own cloned voice.
-Keep responses SHORT — 1-2 sentences maximum.
-Match the language the user speaks in (Hindi, English, or Hinglish).
-Be natural, warm, and conversational — like a real human.
-Never say you are an AI unless directly asked.
-If user speaks Hindi → reply in Hindi.
-If user speaks English → reply in English.
-If user speaks Hinglish → reply in Hinglish.`;
+const SYSTEM_PROMPT = `You are a helpful AI assistant.
+VERY IMPORTANT RULES:
+1. Keep responses MAXIMUM 1 sentence — never more.
+2. If user writes in Hindi → reply in Hindi only.
+3. If user writes in English → reply in English only.
+4. If user writes in Hinglish → reply in Hinglish.
+5. Be warm and natural like a friend.
+6. Never mention you are an AI.`;
 
 export async function POST(
   req: NextRequest,
@@ -46,7 +46,7 @@ export async function POST(
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 150,
+        max_tokens: 80,
         system: SYSTEM_PROMPT,
         messages,
       }),
