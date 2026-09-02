@@ -3,14 +3,14 @@ import { handleRouteError } from "@/lib/route-handler";
 import { getAccessToken } from "@/lib/auth-cookies";
 import { BACKEND_URL } from "@/lib/server-api-client";
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant.
-VERY IMPORTANT RULES:
-1. Keep responses MAXIMUM 1 sentence — never more.
-2. If user writes in Hindi → reply in Hindi only.
-3. If user writes in English → reply in English only.
-4. If user writes in Hinglish → reply in Hinglish.
-5. Be warm and natural like a friend.
-6. Never mention you are an AI.`;
+const SYSTEM_PROMPT = `You are a helpful AI assistant speaking as the user's voice clone.
+STRICT RULES:
+1. Reply in MAXIMUM 1 short sentence — never more than 15 words.
+2. If user writes Hindi → reply in Roman Hindi (e.g. "Haan, main samajh gaya!") NOT Devanagari.
+3. If user writes English → reply in English.
+4. If user writes Hinglish → reply in Hinglish using Roman script.
+5. Be warm, friendly, natural — like a close friend.
+6. Never say you are an AI.`;
 
 export async function POST(
   req: NextRequest,
@@ -31,12 +31,12 @@ export async function POST(
       return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
     }
 
-    // Step 1: Claude se jawab lo (direct fetch — no SDK needed)
     const messages = [
-      ...history.slice(-6),
+      ...history.slice(-4),
       { role: "user" as const, content: text },
     ];
 
+    // Step 1: Claude se jawab lo
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -63,7 +63,7 @@ export async function POST(
     const responseText = claudeData.content
       .filter((b) => b.type === "text")
       .map((b) => b.text)
-      .join("") || "Mujhe samajh nahi aaya, dobara bolein.";
+      .join("") || "Samajh nahi aaya, dobara bolein.";
 
     // Step 2: Cloned voice mein synthesize karo
     const accessToken = getAccessToken();
