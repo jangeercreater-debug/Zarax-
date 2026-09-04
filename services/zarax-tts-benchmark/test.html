@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head><title>Phase 7.1 Benchmark Tester</title></head>
+<body>
+<h2>Phase 7.1 — TTS Benchmark Tester</h2>
+
+<h3>Qwen3-TTS Health Check</h3>
+<button onclick="checkHealth('qwen3')">Check Qwen3 Health</button>
+<pre id="qwen3-health">...</pre>
+
+<h3>svara-TTS Health Check</h3>
+<button onclick="checkHealth('svara')">Check svara Health</button>
+<pre id="svara-health">...</pre>
+
+<h3>Quick Synthesis Test</h3>
+<input id="token" placeholder="ZARAX_BENCHMARK_TOKEN" style="width:400px" type="password">
+<br><br>
+<input id="test-text" value="Hello, how are you today?" style="width:400px">
+<br><br>
+<button onclick="testSynth('qwen3')">Test Qwen3-TTS</button>
+<button onclick="testSynth('svara')">Test svara-TTS</button>
+<br><br>
+<pre id="synth-result">...</pre>
+<audio id="audio-player" controls style="display:none"></audio>
+
+<script>
+const QWEN3_HEALTH = "https://jangeercreater-debug--zarax-qwen3-benchmark-qwen3benchma-306701.modal.run";
+const QWEN3_SYNTH = "https://jangeercreater-debug--zarax-qwen3-benchmark-qeen3benchma-7b6363.modal.run";
+
+// Replace with your svara URLs from Modal dashboard
+const SVARA_HEALTH = "PASTE_SVARA_HEALTH_URL_HERE";
+const SVARA_SYNTH  = "PASTE_SVARA_SYNTH_URL_HERE";
+
+async function checkHealth(model) {
+  const url = model === 'qwen3' ? QWEN3_HEALTH : SVARA_HEALTH;
+  const el = document.getElementById(model + '-health');
+  el.textContent = 'Calling... (may take 30-60s cold start)';
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    el.textContent = JSON.stringify(data, null, 2);
+  } catch(e) {
+    el.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function testSynth(model) {
+  const token = document.getElementById('token').value;
+  const text = document.getElementById('test-text').value;
+  const url = model === 'qwen3' ? QWEN3_SYNTH : SVARA_SYNTH;
+  const el = document.getElementById('synth-result');
+  el.textContent = 'Synthesizing... (first call takes 2-5 min for model load)';
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({token, text, language: 'english'})
+    });
+    const data = await res.json();
+    el.textContent = JSON.stringify({
+      success: data.success,
+      latency_s: data.latency_s,
+      duration_s: data.duration_s,
+      rtf: data.rtf,
+      peak_vram_gb: data.peak_vram_gb,
+      error: data.error,
+      note: data.note,
+    }, null, 2);
+    if (data.audio_b64) {
+      const bytes = atob(data.audio_b64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i=0; i<bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], {type: 'audio/wav'});
+      const audio = document.getElementById('audio-player');
+      audio.src = URL.createObjectURL(blob);
+      audio.style.display = 'block';
+      audio.play();
+    }
+  } catch(e) {
+    el.textContent = 'Error: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>
