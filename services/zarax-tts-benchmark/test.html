@@ -28,9 +28,9 @@ const QWEN3_HEALTH = "https://jangeercreater-debug--zarax-qwen3-benchmark-qwen3b
 const QWEN3_SYNTH = "https://jangeercreater-debug--zarax-qwen3-benchmark-qeen3benchma-7b6363.modal.run";
 
 // Replace with your svara URLs from Modal dashboard
-const SVARA_HEALTH = "PASTE_SVARA_HEALTH_URL_HERE";
-const SVARA_SYNTH  = "PASTE_SVARA_SYNTH_URL_HERE";
-
+const SVARA_HEALTH = "https://jangeercreater-debug--zarax-svara-benchmark-svarabenchma-740730.modal.run";
+const SVARA_SYNTH  = "https://jangeercreater-debug--zarax-svara-benchmark-svarabenchma-019533.modal.run";
+  
 async function checkHealth(model) {
   const url = model === 'qwen3' ? QWEN3_HEALTH : SVARA_HEALTH;
   const el = document.getElementById(model + '-health');
