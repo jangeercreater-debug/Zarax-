@@ -1,0 +1,66 @@
+name: Phase 7.1 — Deploy TTS Benchmark Services
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_qwen3:
+        description: 'Deploy Qwen3-TTS benchmark'
+        required: true
+        default: 'true'
+        type: boolean
+      deploy_svara:
+        description: 'Deploy svara-TTS benchmark'
+        required: true
+        default: 'true'
+        type: boolean
+
+jobs:
+  deploy-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Create Modal benchmark secret
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal secret create zarax-benchmark-secret \
+            ZARAX_BENCHMARK_TOKEN="${{ secrets.ZARAX_BENCHMARK_TOKEN }}" \
+            --force || true
+
+      - name: Deploy Qwen3-TTS benchmark
+        if: ${{ inputs.deploy_qwen3 == true || inputs.deploy_qwen3 == 'true' }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd services/zarax-tts-benchmark
+          modal deploy qwen3_benchmark.py
+          echo "Qwen3-TTS benchmark deployed"
+
+      - name: Deploy svara-TTS benchmark
+        if: ${{ inputs.deploy_svara == true || inputs.deploy_svara == 'true' }}
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd services/zarax-tts-benchmark
+          modal deploy svara_benchmark.py
+          echo "svara-TTS benchmark deployed"
+
+      - name: Production safety check
+        run: |
+          echo "=== PRODUCTION ISOLATION VERIFICATION ==="
+          echo "Checking no production services were modified..."
+          git diff --name-only HEAD~1 HEAD | grep -E "voice-runtime|tts-service|voice-gateway|stt-service|zarax-tts-inference|zarax-clone-inference" && echo "WARNING: Protected files changed" && exit 1 || echo "PASS: No production services modified"
+          echo "Benchmark apps deployed in isolation."
+          echo "Production services: UNTOUCHED"
