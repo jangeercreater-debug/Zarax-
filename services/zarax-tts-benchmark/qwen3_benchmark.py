@@ -118,7 +118,15 @@ class Qwen3Benchmark:
                 except: pass
                 mode = "voice_clone"
             else:
-                wavs, sr = self.model.generate(text=text)
+                # Try multiple method names — qwen-tts API varies by version
+                if hasattr(self.model, 'generate'):
+                    wavs, sr = self.model.generate(text=text)
+                elif hasattr(self.model, 'synthesize'):
+                    wavs, sr = self.model.synthesize(text=text)
+                elif hasattr(self.model, '__call__'):
+                    wavs, sr = self.model(text=text)
+                else:
+                    raise AttributeError(f"No synthesis method found. Available: {[m for m in dir(self.model) if not m.startswith('_')]}")
                 mode = "standard_tts"
             latency_s = time.time() - t0
             peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
