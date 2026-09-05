@@ -1,13 +1,6 @@
 """
 Zarax Phase 7.1 — Qwen3-TTS Baseline Benchmark
-================================================
-EXPERIMENTAL SERVICE — completely isolated from production.
-NOT connected to: TTSAdapter, VoiceCloneAdapter, AudioContract, or any
-existing voice routing. Phase 1–6 production services untouched.
-
-Model: Qwen/Qwen3-TTS-12Hz-1.7B-Base (Apache 2.0)
-GPU: T4 16GB (BF16 inference, ~5.8GB VRAM)
-Purpose: Phase 7.1 baseline benchmark only
+EXPERIMENTAL — isolated from production.
 """
 
 import modal
@@ -77,10 +70,8 @@ class Qwen3Benchmark:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("qwen3-benchmark")
         os.makedirs("/benchmark/hf_cache", exist_ok=True)
-
         self.logger.info("Phase 7.1 — Loading Qwen3-TTS-12Hz-1.7B-Base (Apache 2.0)...")
         t0 = time.time()
-
         try:
             import flash_attn  # noqa
             attn = "flash_attention_2"
@@ -88,8 +79,6 @@ class Qwen3Benchmark:
         except ImportError:
             attn = "sdpa"
             self.has_fa2 = False
-            self.logger.warning("FlashAttention-2 not available — using SDPA.")
-
         try:
             from qwen_tts import Qwen3TTSModel
             self.model = Qwen3TTSModel.from_pretrained(
@@ -101,10 +90,7 @@ class Qwen3Benchmark:
             self.vram_load_gb = torch.cuda.memory_allocated() / 1e9
             self.load_time_s = time.time() - t0
             self.model_loaded = True
-            self.logger.info(
-                f"Qwen3-TTS loaded | {self.load_time_s:.1f}s | "
-                f"VRAM: {self.vram_load_gb:.2f}GB | FA2: {self.has_fa2}"
-            )
+            self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
@@ -115,22 +101,18 @@ class Qwen3Benchmark:
         exp = os.environ.get("ZARAX_BENCHMARK_TOKEN", "")
         return bool(exp) and token == exp
 
-    def _synthesize_one(self, text: str, ref_b64: str | None = None) -> dict:
+    def _synth(self, text: str, ref_b64: str | None = None) -> dict:
         import base64, io, time, torch, numpy as np
         import soundfile as sf
-
         if not getattr(self, "model_loaded", False):
             return {"success": False, "error": "model_not_loaded", "text": text}
-
         torch.cuda.reset_peak_memory_stats()
         t0 = time.time()
-
         try:
             if ref_b64:
                 import tempfile, os
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp.write(base64.b64decode(ref_b64))
-                    ref_path = tmp.name
+                    tmp.write(base64.b64decode(ref_b64)); ref_path = tmp.name
                 wavs, sr = self.model.generate_voice_clone(text=text, reference_audio=ref_path)
                 try: os.unlink(ref_path)
                 except: pass
@@ -138,21 +120,17 @@ class Qwen3Benchmark:
             else:
                 wavs, sr = self.model.generate(text=text)
                 mode = "standard_tts"
-
             latency_s = time.time() - t0
             peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
-
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
             if hasattr(audio_np, "cpu"): audio_np = audio_np.cpu().numpy()
             audio_np = np.squeeze(audio_np).astype(np.float32)
             duration_s = len(audio_np) / sr
-
             buf = io.BytesIO()
             sf.write(buf, audio_np, sr, format="WAV", subtype="PCM_16")
-            audio_b64 = base64.b64encode(buf.getvalue()).decode()
-
             return {
-                "success": True, "audio_b64": audio_b64,
+                "success": True,
+                "audio_b64": base64.b64encode(buf.getvalue()).decode(),
                 "sample_rate": sr, "duration_s": round(duration_s, 2),
                 "latency_s": round(latency_s, 2),
                 "rtf": round(latency_s / max(duration_s, 0.001), 3),
@@ -162,34 +140,31 @@ class Qwen3Benchmark:
         except Exception as e:
             return {"success": False, "error": str(e), "text": text}
 
-    def _wer(self, audio_b64: str, ref_text: str, lang: str) -> dict:
+    def _wer(self, audio_b64: str, ref: str, lang: str) -> dict:
         try:
             import base64, tempfile, os, whisper
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(base64.b64decode(audio_b64)); tmp_path = tmp.name
+                tmp.write(base64.b64decode(audio_b64)); p = tmp.name
             wm = whisper.load_model("base")
             wl = "hi" if "hindi" in lang else "en"
-            res = wm.transcribe(tmp_path, language=wl)
-            transcript = res["text"].strip()
-            os.unlink(tmp_path)
-            ref_w = ref_text.lower().split(); hyp_w = transcript.lower().split()
-            m, n = len(ref_w), len(hyp_w); dp = list(range(n + 1))
+            t = wm.transcribe(p, language=wl)["text"].strip(); os.unlink(p)
+            r = ref.lower().split(); h = t.lower().split()
+            m, n = len(r), len(h); dp = list(range(n + 1))
             for i in range(1, m + 1):
-                ndp = [i] + [0] * n
+                nd = [i] + [0]*n
                 for j in range(1, n + 1):
-                    ndp[j] = dp[j-1] if ref_w[i-1] == hyp_w[j-1] else 1 + min(dp[j], ndp[j-1], dp[j-1])
-                dp = ndp
-            return {"wer": round(dp[n] / max(m, 1), 3), "transcript": transcript}
+                    nd[j] = dp[j-1] if r[i-1]==h[j-1] else 1+min(dp[j],nd[j-1],dp[j-1])
+                dp = nd
+            return {"wer": round(dp[n]/max(m,1),3), "transcript": t}
         except Exception as e:
             return {"wer": None, "error": str(e)}
 
-    @modal.fastapi_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET", label="qwen3-health")
     def health(self):
         return {
             "service": "zarax-qwen3-benchmark", "phase": "7.1",
             "status": "EXPERIMENTAL — isolated from production",
             "model": "Qwen3-TTS-12Hz-1.7B-Base", "license": "Apache 2.0",
-            "official_languages": "zh,en,ja,ko,de,fr,ru,pt,es,it",
             "hindi_official": False,
             "model_loaded": getattr(self, "model_loaded", False),
             "flash_attention_2": getattr(self, "has_fa2", False),
@@ -198,71 +173,59 @@ class Qwen3Benchmark:
             "load_error": getattr(self, "load_error", None),
         }
 
-    @modal.fastapi_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST", label="qwen3-synthesize")
     def synthesize(self, request: dict):
         from fastapi import HTTPException
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         text = request.get("text", "").strip()
-        if not text or len(text) > 500:
-            raise HTTPException(status_code=400)
-        result = self._synthesize_one(text, request.get("reference_audio_b64"))
+        if not text or len(text) > 500: raise HTTPException(status_code=400)
+        result = self._synth(text, request.get("reference_audio_b64"))
         result["model"] = "Qwen3-TTS-12Hz-1.7B-Base"
-        result["note"] = "Hindi NOT officially supported. Results are experimental."
+        result["note"] = "Hindi NOT officially supported."
         return result
 
-    @modal.fastapi_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST", label="qwen3-full-benchmark")
     def run_full_benchmark(self, request: dict):
         from fastapi import HTTPException
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         if not getattr(self, "model_loaded", False):
-            raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_READY"})
-
+            raise HTTPException(status_code=503)
         run_wer = request.get("run_wer", True)
         results = []
-
         for s in BENCHMARK_SENTENCES:
-            self.logger.info(f"[{s['id']}] {s['lang']}: {s['text'][:40]}...")
-            r = self._synthesize_one(s["text"])
-            entry = {"id": s["id"], "lang": s["lang"], "category": s["cat"], "text": s["text"], **r}
+            r = self._synth(s["text"])
+            entry = {"id": s["id"], "lang": s["lang"], "cat": s["cat"], "text": s["text"], **r}
             if run_wer and r.get("success") and r.get("audio_b64"):
                 entry["wer_result"] = self._wer(r["audio_b64"], s["text"], s["lang"])
             results.append(entry)
-
         successful = [r for r in results if r.get("success")]
         by_lang: dict = {}
         for r in results:
             l = r["lang"]
-            if l not in by_lang: by_lang[l] = {"total": 0, "success": 0, "latencies": [], "wers": []}
+            if l not in by_lang: by_lang[l] = {"total":0,"success":0,"lat":[],"wers":[]}
             by_lang[l]["total"] += 1
             if r.get("success"):
                 by_lang[l]["success"] += 1
-                if r.get("latency_s"): by_lang[l]["latencies"].append(r["latency_s"])
-                wer = r.get("wer_result", {}).get("wer")
+                if r.get("latency_s"): by_lang[l]["lat"].append(r["latency_s"])
+                wer = r.get("wer_result",{}).get("wer")
                 if wer is not None: by_lang[l]["wers"].append(wer)
-
-        summary = {}
-        for lang, st in by_lang.items():
-            summary[lang] = {
-                "success_rate": f"{st['success']}/{st['total']}",
-                "avg_latency_s": round(sum(st["latencies"]) / max(len(st["latencies"]), 1), 2),
-                "avg_wer": round(sum(st["wers"]) / max(len(st["wers"]), 1), 3) if st["wers"] else "UNTESTED",
-            }
-
+        summary = {l: {
+            "success_rate": f"{st['success']}/{st['total']}",
+            "avg_latency_s": round(sum(st["lat"])/max(len(st["lat"]),1),2),
+            "avg_wer": round(sum(st["wers"])/max(len(st["wers"]),1),3) if st["wers"] else "UNTESTED",
+        } for l,st in by_lang.items()}
         return {
             "phase": "7.1", "model": "Qwen3-TTS-12Hz-1.7B-Base",
-            "license": "Apache 2.0",
-            "official_languages": ["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"],
-            "hindi_official": False, "gpu": "T4",
+            "license": "Apache 2.0", "hindi_official": False, "gpu": "T4",
             "flash_attention_2": getattr(self, "has_fa2", False),
             "model_load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
-            "total_sentences": len(results), "total_successful": len(successful),
-            "peak_vram_gb": max((r.get("peak_vram_gb", 0) for r in results), default=0),
+            "total": len(results), "successful": len(successful),
             "summary_by_language": summary,
-            "mos": "UNTESTED — requires human listening evaluation",
-            "speaker_similarity": "UNTESTED — requires reference audio + embedding model",
+            "mos": "UNTESTED — requires human listening",
+            "speaker_similarity": "UNTESTED",
             "results": results,
-            "production_impact": "ZERO — isolated benchmark service",
-          }
+            "production_impact": "ZERO",
+      }
