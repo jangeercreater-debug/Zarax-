@@ -91,12 +91,19 @@ class Qwen3Benchmark:
             self.load_time_s = time.time() - t0
             self.model_loaded = True
             self.model_methods = [m for m in dir(self.model) if not m.startswith('_')]
+            # Log supported speakers for API discovery
+            try:
+                speakers = self.model.get_supported_speakers()
+                self.supported_speakers = speakers
+                self.logger.info(f"Speakers: {speakers[:5]}")
+            except Exception:
+                self.supported_speakers = []
             self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
-            self.logger.info(f"Methods: {self.model_methods}")
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
             self.model_methods = []
+            self.supported_speakers = []
             self.logger.error(f"Load failed: {e}")
 
     def _auth(self, token: str) -> bool:
@@ -119,51 +126,36 @@ class Qwen3Benchmark:
                     tmp.write(base64.b64decode(ref_b64))
                     ref_path = tmp.name
                 wavs, sr = m.generate_voice_clone(text=text, reference_audio=ref_path)
-                try: os.unlink(ref_path)
-                except: pass
+                try:
+                    os.unlink(ref_path)
+                except Exception:
+                    pass
                 mode = "voice_clone"
             else:
-                # generate_defaults is a DICT property, not callable
-                # Use get_supported_speakers + generate_custom_voice
-                speakers = []
-                if hasattr(m, 'get_supported_speakers'):
-                    speakers = m.get_supported_speakers()
-                    self.logger.info(f"Supported speakers: {speakers[:3]}")
-
-                if hasattr(m, 'generate_custom_voice') and speakers:
+                # generate_defaults is a property dict — NOT callable
+                # Use generate_custom_voice with first available speaker
+                speakers = getattr(self, "supported_speakers", [])
+                if speakers and hasattr(m, 'generate_custom_voice'):
                     wavs, sr = m.generate_custom_voice(text=text, voice=speakers[0])
+                    mode = f"custom_voice:{speakers[0]}"
                 elif hasattr(m, 'generate_voice_design'):
                     wavs, sr = m.generate_voice_design(text=text)
+                    mode = "voice_design"
+                elif hasattr(m, 'generate_voice_clone'):
+                    # fallback: use voice_clone without reference (may fail)
+                    wavs, sr = m.generate_voice_clone(text=text)
+                    mode = "voice_clone_no_ref"
                 else:
-                    raise AttributeError(f"No synthesis method. Methods: {self.model_methods}")
-                result = None  # not used
-                    # generate_defaults returns dict with audio data
-                    if isinstance(result, dict):
-                        self.logger.info(f"generate_defaults keys: {list(result.keys())}")
-                        # Try common key names for audio output
-                        if 'audio' in result:
-                            wavs = result['audio']
-                            sr = result.get('sample_rate', result.get('sr', 24000))
-                        elif 'waveform' in result:
-                            wavs = result['waveform']
-                            sr = result.get('sample_rate', 24000)
-                        elif 'wav' in result:
-                            wavs = result['wav']
-                            sr = result.get('sample_rate', 24000)
-                        else:
-                            raise ValueError(f"Unknown generate_defaults output keys: {list(result.keys())}")
-                elif hasattr(m, 'generate_custom_voice'):
-                    wavs, sr = m.generate_custom_voice(text=text)
-                elif hasattr(m, 'generate_voice_design'):
-                    wavs, sr = m.generate_voice_design(text=text)
-                else:
-                    raise AttributeError(f"No synthesis method. Available: {self.model_methods}")
-                mode = "standard_tts"
+                    raise AttributeError(
+                        f"No usable synthesis method. Methods: {self.model_methods}, "
+                        f"Speakers: {speakers}"
+                    )
 
             latency_s = time.time() - t0
             peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
-            if hasattr(audio_np, "cpu"): audio_np = audio_np.cpu().numpy()
+            if hasattr(audio_np, "cpu"):
+                audio_np = audio_np.cpu().numpy()
             audio_np = np.squeeze(audio_np).astype(np.float32)
             duration_s = len(audio_np) / sr
             buf = io.BytesIO()
@@ -171,37 +163,45 @@ class Qwen3Benchmark:
             return {
                 "success": True,
                 "audio_b64": base64.b64encode(buf.getvalue()).decode(),
-                "sample_rate": sr, "duration_s": round(duration_s, 2),
+                "sample_rate": sr,
+                "duration_s": round(duration_s, 2),
                 "latency_s": round(latency_s, 2),
                 "rtf": round(latency_s / max(duration_s, 0.001), 3),
                 "peak_vram_gb": round(peak_vram_gb, 2),
                 "flash_attention_2": self.has_fa2,
-                "mode": mode, "text": text,
-                "model_methods": self.model_methods,
+                "mode": mode,
+                "text": text,
+                "supported_speakers": getattr(self, "supported_speakers", [])[:3],
             }
         except Exception as e:
             return {
-                "success": False, "error": str(e), "text": text,
+                "success": False,
+                "error": str(e),
+                "text": text,
                 "model_methods": getattr(self, "model_methods", []),
+                "supported_speakers": getattr(self, "supported_speakers", [])[:5],
             }
 
     def _wer(self, audio_b64: str, ref: str, lang: str) -> dict:
         try:
             import base64, tempfile, os, whisper
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(base64.b64decode(audio_b64)); p = tmp.name
+                tmp.write(base64.b64decode(audio_b64))
+                p = tmp.name
             wm = whisper.load_model("base")
             wl = "hi" if "hindi" in lang else "en"
             t = wm.transcribe(p, language=wl)["text"].strip()
             os.unlink(p)
-            r = ref.lower().split(); h = t.lower().split()
-            m, n = len(r), len(h); dp = list(range(n + 1))
+            r = ref.lower().split()
+            h = t.lower().split()
+            m, n = len(r), len(h)
+            dp = list(range(n + 1))
             for i in range(1, m + 1):
                 nd = [i] + [0] * n
                 for j in range(1, n + 1):
-                    nd[j] = dp[j-1] if r[i-1]==h[j-1] else 1+min(dp[j],nd[j-1],dp[j-1])
+                    nd[j] = dp[j-1] if r[i-1] == h[j-1] else 1 + min(dp[j], nd[j-1], dp[j-1])
                 dp = nd
-            return {"wer": round(dp[n]/max(m,1), 3), "transcript": t}
+            return {"wer": round(dp[n] / max(m, 1), 3), "transcript": t}
         except Exception as e:
             return {"wer": None, "error": str(e)}
 
@@ -218,6 +218,7 @@ class Qwen3Benchmark:
             "load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "load_error": getattr(self, "load_error", None),
             "model_methods": getattr(self, "model_methods", []),
+            "supported_speakers": getattr(self, "supported_speakers", [])[:5],
         }
 
     @modal.fastapi_endpoint(method="POST", label="qwen3-synthesize")
@@ -244,7 +245,10 @@ class Qwen3Benchmark:
         results = []
         for s in BENCHMARK_SENTENCES:
             r = self._synth(s["text"])
-            entry = {"id": s["id"], "lang": s["lang"], "cat": s["cat"], "text": s["text"], **r}
+            entry = {
+                "id": s["id"], "lang": s["lang"],
+                "cat": s["cat"], "text": s["text"], **r
+            }
             if run_wer and r.get("success") and r.get("audio_b64"):
                 entry["wer_result"] = self._wer(r["audio_b64"], s["text"], s["lang"])
             results.append(entry)
@@ -252,25 +256,31 @@ class Qwen3Benchmark:
         by_lang: dict = {}
         for r in results:
             l = r["lang"]
-            if l not in by_lang: by_lang[l] = {"total":0,"success":0,"lat":[],"wers":[]}
+            if l not in by_lang:
+                by_lang[l] = {"total": 0, "success": 0, "lat": [], "wers": []}
             by_lang[l]["total"] += 1
             if r.get("success"):
                 by_lang[l]["success"] += 1
-                if r.get("latency_s"): by_lang[l]["lat"].append(r["latency_s"])
-                wer = r.get("wer_result",{}).get("wer")
-                if wer is not None: by_lang[l]["wers"].append(wer)
-        summary = {l: {
-            "success_rate": f"{st['success']}/{st['total']}",
-            "avg_latency_s": round(sum(st["lat"])/max(len(st["lat"]),1),2),
-            "avg_wer": round(sum(st["wers"])/max(len(st["wers"]),1),3) if st["wers"] else "UNTESTED",
-        } for l, st in by_lang.items()}
+                if r.get("latency_s"):
+                    by_lang[l]["lat"].append(r["latency_s"])
+                wer = r.get("wer_result", {}).get("wer")
+                if wer is not None:
+                    by_lang[l]["wers"].append(wer)
+        summary = {
+            l: {
+                "success_rate": f"{st['success']}/{st['total']}",
+                "avg_latency_s": round(sum(st["lat"]) / max(len(st["lat"]), 1), 2),
+                "avg_wer": round(sum(st["wers"]) / max(len(st["wers"]), 1), 3) if st["wers"] else "UNTESTED",
+            }
+            for l, st in by_lang.items()
+        }
         return {
             "phase": "7.1", "model": "Qwen3-TTS-12Hz-1.7B-Base",
             "license": "Apache 2.0", "hindi_official": False, "gpu": "T4",
             "flash_attention_2": getattr(self, "has_fa2", False),
             "model_load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
-            "model_methods": getattr(self, "model_methods", []),
+            "supported_speakers": getattr(self, "supported_speakers", [])[:5],
             "total": len(results), "successful": len(successful),
             "summary_by_language": summary,
             "mos": "UNTESTED — requires human listening",
