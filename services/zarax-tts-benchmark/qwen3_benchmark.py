@@ -90,16 +90,54 @@ class Qwen3Benchmark:
             self.vram_load_gb = torch.cuda.memory_allocated() / 1e9
             self.load_time_s = time.time() - t0
             self.model_loaded = True
+            # Log all available methods for API discovery
+            methods = [m for m in dir(self.model) if not m.startswith('_')]
             self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
+            self.logger.info(f"Available methods: {methods}")
+            self.model_methods = methods
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
+            self.model_methods = []
             self.logger.error(f"Load failed: {e}")
 
     def _auth(self, token: str) -> bool:
         import os
         exp = os.environ.get("ZARAX_BENCHMARK_TOKEN", "")
         return bool(exp) and token == exp
+
+    def _call_synthesis(self, text: str):
+        """Call synthesis with dynamic method discovery."""
+        m = self.model
+        if hasattr(m, 'generate'):
+            return m.generate(text=text)
+        elif hasattr(m, 'synthesize'):
+            return m.synthesize(text=text)
+        elif hasattr(m, 'tts'):
+            return m.tts(text=text)
+        elif hasattr(m, 'infer'):
+            return m.infer(text=text)
+        elif hasattr(m, 'forward'):
+            result = m.forward(text=text)
+            return result if isinstance(result, tuple) else (result, 24000)
+        else:
+            raise AttributeError(
+                f"No synthesis method found. Available: {self.model_methods}"
+            )
+
+    def _call_clone(self, text: str, ref_path: str):
+        """Call voice clone with dynamic method discovery."""
+        m = self.model
+        if hasattr(m, 'generate_voice_clone'):
+            return m.generate_voice_clone(text=text, reference_audio=ref_path)
+        elif hasattr(m, 'clone'):
+            return m.clone(text=text, reference_audio=ref_path)
+        elif hasattr(m, 'voice_clone'):
+            return m.voice_clone(text=text, ref_audio=ref_path)
+        else:
+            raise AttributeError(
+                f"No clone method found. Available: {self.model_methods}"
+            )
 
     def _synth(self, text: str, ref_b64: str | None = None) -> dict:
         import base64, io, time, torch, numpy as np
@@ -112,22 +150,16 @@ class Qwen3Benchmark:
             if ref_b64:
                 import tempfile, os
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp.write(base64.b64decode(ref_b64)); ref_path = tmp.name
-                wavs, sr = self.model.generate_voice_clone(text=text, reference_audio=ref_path)
+                    tmp.write(base64.b64decode(ref_b64))
+                    ref_path = tmp.name
+                wavs, sr = self._call_clone(text, ref_path)
                 try: os.unlink(ref_path)
                 except: pass
                 mode = "voice_clone"
             else:
-                # Try multiple method names — qwen-tts API varies by version
-                if hasattr(self.model, 'generate'):
-                    wavs, sr = self.model.generate(text=text)
-                elif hasattr(self.model, 'synthesize'):
-                    wavs, sr = self.model.synthesize(text=text)
-                elif hasattr(self.model, '__call__'):
-                    wavs, sr = self.model(text=text)
-                else:
-                    raise AttributeError(f"No synthesis method found. Available: {[m for m in dir(self.model) if not m.startswith('_')]}")
+                wavs, sr = self._call_synthesis(text)
                 mode = "standard_tts"
+
             latency_s = time.time() - t0
             peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
@@ -139,14 +171,20 @@ class Qwen3Benchmark:
             return {
                 "success": True,
                 "audio_b64": base64.b64encode(buf.getvalue()).decode(),
-                "sample_rate": sr, "duration_s": round(duration_s, 2),
+                "sample_rate": sr,
+                "duration_s": round(duration_s, 2),
                 "latency_s": round(latency_s, 2),
                 "rtf": round(latency_s / max(duration_s, 0.001), 3),
                 "peak_vram_gb": round(peak_vram_gb, 2),
-                "flash_attention_2": self.has_fa2, "mode": mode, "text": text,
+                "flash_attention_2": self.has_fa2,
+                "mode": mode, "text": text,
+                "model_methods": self.model_methods,
             }
         except Exception as e:
-            return {"success": False, "error": str(e), "text": text}
+            return {
+                "success": False, "error": str(e), "text": text,
+                "model_methods": getattr(self, "model_methods", []),
+            }
 
     def _wer(self, audio_b64: str, ref: str, lang: str) -> dict:
         try:
@@ -155,15 +193,16 @@ class Qwen3Benchmark:
                 tmp.write(base64.b64decode(audio_b64)); p = tmp.name
             wm = whisper.load_model("base")
             wl = "hi" if "hindi" in lang else "en"
-            t = wm.transcribe(p, language=wl)["text"].strip(); os.unlink(p)
+            t = wm.transcribe(p, language=wl)["text"].strip()
+            os.unlink(p)
             r = ref.lower().split(); h = t.lower().split()
             m, n = len(r), len(h); dp = list(range(n + 1))
             for i in range(1, m + 1):
-                nd = [i] + [0]*n
+                nd = [i] + [0] * n
                 for j in range(1, n + 1):
                     nd[j] = dp[j-1] if r[i-1]==h[j-1] else 1+min(dp[j],nd[j-1],dp[j-1])
                 dp = nd
-            return {"wer": round(dp[n]/max(m,1),3), "transcript": t}
+            return {"wer": round(dp[n]/max(m,1), 3), "transcript": t}
         except Exception as e:
             return {"wer": None, "error": str(e)}
 
@@ -179,6 +218,7 @@ class Qwen3Benchmark:
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
             "load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "load_error": getattr(self, "load_error", None),
+            "model_methods": getattr(self, "model_methods", []),
         }
 
     @modal.fastapi_endpoint(method="POST", label="qwen3-synthesize")
@@ -187,7 +227,8 @@ class Qwen3Benchmark:
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         text = request.get("text", "").strip()
-        if not text or len(text) > 500: raise HTTPException(status_code=400)
+        if not text or len(text) > 500:
+            raise HTTPException(status_code=400)
         result = self._synth(text, request.get("reference_audio_b64"))
         result["model"] = "Qwen3-TTS-12Hz-1.7B-Base"
         result["note"] = "Hindi NOT officially supported."
@@ -223,17 +264,18 @@ class Qwen3Benchmark:
             "success_rate": f"{st['success']}/{st['total']}",
             "avg_latency_s": round(sum(st["lat"])/max(len(st["lat"]),1),2),
             "avg_wer": round(sum(st["wers"])/max(len(st["wers"]),1),3) if st["wers"] else "UNTESTED",
-        } for l,st in by_lang.items()}
+        } for l, st in by_lang.items()}
         return {
             "phase": "7.1", "model": "Qwen3-TTS-12Hz-1.7B-Base",
             "license": "Apache 2.0", "hindi_official": False, "gpu": "T4",
             "flash_attention_2": getattr(self, "has_fa2", False),
             "model_load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
+            "model_methods": getattr(self, "model_methods", []),
             "total": len(results), "successful": len(successful),
             "summary_by_language": summary,
             "mos": "UNTESTED — requires human listening",
             "speaker_similarity": "UNTESTED",
             "results": results,
             "production_impact": "ZERO",
-      }
+          }
