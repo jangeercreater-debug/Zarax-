@@ -123,9 +123,20 @@ class Qwen3Benchmark:
                 except: pass
                 mode = "voice_clone"
             else:
-                # qwen-tts uses generate_defaults for standard TTS
-                if hasattr(m, 'generate_defaults'):
-                    result = m.generate_defaults(text=text)
+                # generate_defaults is a DICT property, not callable
+                # Use get_supported_speakers + generate_custom_voice
+                speakers = []
+                if hasattr(m, 'get_supported_speakers'):
+                    speakers = m.get_supported_speakers()
+                    self.logger.info(f"Supported speakers: {speakers[:3]}")
+
+                if hasattr(m, 'generate_custom_voice') and speakers:
+                    wavs, sr = m.generate_custom_voice(text=text, voice=speakers[0])
+                elif hasattr(m, 'generate_voice_design'):
+                    wavs, sr = m.generate_voice_design(text=text)
+                else:
+                    raise AttributeError(f"No synthesis method. Methods: {self.model_methods}")
+                result = None  # not used
                     # generate_defaults returns dict with audio data
                     if isinstance(result, dict):
                         self.logger.info(f"generate_defaults keys: {list(result.keys())}")
@@ -141,8 +152,6 @@ class Qwen3Benchmark:
                             sr = result.get('sample_rate', 24000)
                         else:
                             raise ValueError(f"Unknown generate_defaults output keys: {list(result.keys())}")
-                    else:
-                        wavs, sr = result
                 elif hasattr(m, 'generate_custom_voice'):
                     wavs, sr = m.generate_custom_voice(text=text)
                 elif hasattr(m, 'generate_voice_design'):
