@@ -107,11 +107,18 @@ class Qwen3Benchmark:
         return bool(exp) and token == exp
 
     def _call_synthesis(self, text: str):
-        """Call synthesis with dynamic method discovery."""
+        """Call synthesis — qwen-tts uses generate_defaults for standard TTS."""
         m = self.model
-        if hasattr(m, 'generate'):
+        if hasattr(m, 'generate_defaults'):
+            return m.generate_defaults(text=text)
+        elif hasattr(m, 'generate_custom_voice'):
+            return m.generate_custom_voice(text=text)
+        elif hasattr(m, 'generate'):
             return m.generate(text=text)
-        elif hasattr(m, 'synthesize'):
+        else:
+            raise AttributeError(
+                f"No synthesis method. Available: {self.model_methods}"
+            )
             return m.synthesize(text=text)
         elif hasattr(m, 'tts'):
             return m.tts(text=text)
