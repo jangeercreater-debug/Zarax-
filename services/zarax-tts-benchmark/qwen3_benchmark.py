@@ -82,7 +82,7 @@ class Qwen3Benchmark:
         try:
             from qwen_tts import Qwen3TTSModel
             self.model = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+                "Qwen/Qwen3-TTS-12Hz-1.7B",
                 device_map="cuda:0",
                 dtype=torch.bfloat16,
                 attn_implementation=attn,
@@ -210,7 +210,7 @@ class Qwen3Benchmark:
         return {
             "service": "zarax-qwen3-benchmark", "phase": "7.1",
             "status": "EXPERIMENTAL — isolated from production",
-            "model": "Qwen3-TTS-12Hz-1.7B-Base", "license": "Apache 2.0",
+            "model": "Qwen3-TTS-12Hz-1.7B", "license": "Apache 2.0",
             "hindi_official": False,
             "model_loaded": getattr(self, "model_loaded", False),
             "flash_attention_2": getattr(self, "has_fa2", False),
@@ -230,7 +230,7 @@ class Qwen3Benchmark:
         if not text or len(text) > 500:
             raise HTTPException(status_code=400)
         result = self._synth(text, request.get("reference_audio_b64"))
-        result["model"] = "Qwen3-TTS-12Hz-1.7B-Base"
+        result["model"] = "Qwen3-TTS-12Hz-1.7B"
         result["note"] = "Hindi NOT officially supported."
         return result
 
