@@ -70,7 +70,7 @@ class Qwen3Benchmark:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("qwen3-benchmark")
         os.makedirs("/benchmark/hf_cache", exist_ok=True)
-        self.logger.info("Phase 7.1 — Loading Qwen3-TTS-12Hz-1.7B-Base (Apache 2.0)...")
+        self.logger.info("Loading Qwen3-TTS-12Hz-1.7B-Base (Apache 2.0)...")
         t0 = time.time()
         try:
             import flash_attn  # noqa
@@ -90,11 +90,9 @@ class Qwen3Benchmark:
             self.vram_load_gb = torch.cuda.memory_allocated() / 1e9
             self.load_time_s = time.time() - t0
             self.model_loaded = True
-            # Log all available methods for API discovery
-            methods = [m for m in dir(self.model) if not m.startswith('_')]
+            self.model_methods = [m for m in dir(self.model) if not m.startswith('_')]
             self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
-            self.logger.info(f"Available methods: {methods}")
-            self.model_methods = methods
+            self.logger.info(f"Methods: {self.model_methods}")
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
@@ -106,46 +104,6 @@ class Qwen3Benchmark:
         exp = os.environ.get("ZARAX_BENCHMARK_TOKEN", "")
         return bool(exp) and token == exp
 
-    def _call_synthesis(self, text: str):
-        """Call synthesis — qwen-tts uses generate_defaults for standard TTS."""
-        m = self.model
-        if hasattr(m, 'generate_defaults'):
-            return m.generate_defaults(text=text)
-        elif hasattr(m, 'generate_custom_voice'):
-            return m.generate_custom_voice(text=text)
-        elif hasattr(m, 'generate'):
-            return m.generate(text=text)
-        else:
-            raise AttributeError(
-                f"No synthesis method. Available: {self.model_methods}"
-            )
-            return m.synthesize(text=text)
-        elif hasattr(m, 'tts'):
-            return m.tts(text=text)
-        elif hasattr(m, 'infer'):
-            return m.infer(text=text)
-        elif hasattr(m, 'forward'):
-            result = m.forward(text=text)
-            return result if isinstance(result, tuple) else (result, 24000)
-        else:
-            raise AttributeError(
-                f"No synthesis method found. Available: {self.model_methods}"
-            )
-
-    def _call_clone(self, text: str, ref_path: str):
-        """Call voice clone with dynamic method discovery."""
-        m = self.model
-        if hasattr(m, 'generate_voice_clone'):
-            return m.generate_voice_clone(text=text, reference_audio=ref_path)
-        elif hasattr(m, 'clone'):
-            return m.clone(text=text, reference_audio=ref_path)
-        elif hasattr(m, 'voice_clone'):
-            return m.voice_clone(text=text, ref_audio=ref_path)
-        else:
-            raise AttributeError(
-                f"No clone method found. Available: {self.model_methods}"
-            )
-
     def _synth(self, text: str, ref_b64: str | None = None) -> dict:
         import base64, io, time, torch, numpy as np
         import soundfile as sf
@@ -154,17 +112,26 @@ class Qwen3Benchmark:
         torch.cuda.reset_peak_memory_stats()
         t0 = time.time()
         try:
+            m = self.model
             if ref_b64:
                 import tempfile, os
                 with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                     tmp.write(base64.b64decode(ref_b64))
                     ref_path = tmp.name
-                wavs, sr = self._call_clone(text, ref_path)
+                wavs, sr = m.generate_voice_clone(text=text, reference_audio=ref_path)
                 try: os.unlink(ref_path)
                 except: pass
                 mode = "voice_clone"
             else:
-                wavs, sr = self._call_synthesis(text)
+                # qwen-tts uses generate_defaults for standard TTS
+                if hasattr(m, 'generate_defaults'):
+                    wavs, sr = m.generate_defaults(text=text)
+                elif hasattr(m, 'generate_custom_voice'):
+                    wavs, sr = m.generate_custom_voice(text=text)
+                elif hasattr(m, 'generate_voice_design'):
+                    wavs, sr = m.generate_voice_design(text=text)
+                else:
+                    raise AttributeError(f"No synthesis method. Available: {self.model_methods}")
                 mode = "standard_tts"
 
             latency_s = time.time() - t0
@@ -178,8 +145,7 @@ class Qwen3Benchmark:
             return {
                 "success": True,
                 "audio_b64": base64.b64encode(buf.getvalue()).decode(),
-                "sample_rate": sr,
-                "duration_s": round(duration_s, 2),
+                "sample_rate": sr, "duration_s": round(duration_s, 2),
                 "latency_s": round(latency_s, 2),
                 "rtf": round(latency_s / max(duration_s, 0.001), 3),
                 "peak_vram_gb": round(peak_vram_gb, 2),
