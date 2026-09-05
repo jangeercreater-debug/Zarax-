@@ -125,7 +125,24 @@ class Qwen3Benchmark:
             else:
                 # qwen-tts uses generate_defaults for standard TTS
                 if hasattr(m, 'generate_defaults'):
-                    wavs, sr = m.generate_defaults(text=text)
+                    result = m.generate_defaults(text=text)
+                    # generate_defaults returns dict with audio data
+                    if isinstance(result, dict):
+                        self.logger.info(f"generate_defaults keys: {list(result.keys())}")
+                        # Try common key names for audio output
+                        if 'audio' in result:
+                            wavs = result['audio']
+                            sr = result.get('sample_rate', result.get('sr', 24000))
+                        elif 'waveform' in result:
+                            wavs = result['waveform']
+                            sr = result.get('sample_rate', 24000)
+                        elif 'wav' in result:
+                            wavs = result['wav']
+                            sr = result.get('sample_rate', 24000)
+                        else:
+                            raise ValueError(f"Unknown generate_defaults output keys: {list(result.keys())}")
+                    else:
+                        wavs, sr = result
                 elif hasattr(m, 'generate_custom_voice'):
                     wavs, sr = m.generate_custom_voice(text=text)
                 elif hasattr(m, 'generate_voice_design'):
