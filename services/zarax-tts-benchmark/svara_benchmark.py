@@ -1,15 +1,6 @@
 """
 Zarax Phase 7.1 — svara-TTS v1 Baseline Benchmark
-===================================================
-EXPERIMENTAL SERVICE — completely isolated from production.
-NOT connected to: TTSAdapter, VoiceCloneAdapter, AudioContract, or any
-existing voice routing. Phase 1–6 production services untouched.
-
-Model: kenpath/svara-tts-v1 (Apache 2.0)
-Base: canopylabs/orpheus-3b-0.1 (Llama-3.2-3B, Apache 2.0)
-Audio codec: hubertsiuzdak/snac_24khz
-GPU: L4 24GB (FP16, ~8-10GB VRAM)
-Purpose: Phase 7.1 baseline benchmark only
+EXPERIMENTAL — isolated from production.
 """
 
 import modal
@@ -67,20 +58,13 @@ BENCHMARK_SENTENCES = [
 ]
 
 SVARA_SPEAKERS = {
-    "english": "English (Female)",
-    "hindi": "Hindi (Female)",
-    "hindi_devanagari": "Hindi (Female)",
-    "hinglish": "Hindi (Female)",
+    "english": "English (Female)", "hindi": "Hindi (Female)",
+    "hindi_devanagari": "Hindi (Female)", "hinglish": "Hindi (Female)",
 }
-
 SVARA_STYLES = {
-    "conversational": "<neutral>",
-    "professional": "<formal>",
-    "ivr": "<formal>",
-    "casual": "<neutral>",
-    "introduction": "<neutral>",
-    "question": "<neutral>",
-    "numbers": "<neutral>",
+    "conversational": "<neutral>", "professional": "<formal>",
+    "ivr": "<formal>", "casual": "<neutral>",
+    "introduction": "<neutral>", "question": "<neutral>", "numbers": "<neutral>",
 }
 
 
@@ -100,23 +84,21 @@ class SvaraBenchmark:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("svara-benchmark")
         os.makedirs("/benchmark/hf_cache", exist_ok=True)
-        self.logger.info("Phase 7.1 — Loading svara-TTS v1 (Apache 2.0, 3B params)...")
+        self.logger.info("Phase 7.1 — Loading svara-TTS v1 (Apache 2.0)...")
         t0 = time.time()
         try:
             from transformers import AutoTokenizer, AutoModelForCausalLM
             from snac import SNAC
             self.tokenizer = AutoTokenizer.from_pretrained("kenpath/svara-tts-v1")
             self.llm = AutoModelForCausalLM.from_pretrained(
-                "kenpath/svara-tts-v1",
-                device_map="cuda:0",
-                torch_dtype=torch.float16,
+                "kenpath/svara-tts-v1", device_map="cuda:0", torch_dtype=torch.float16,
             )
             self.llm.eval()
             self.snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().to("cuda:0")
             self.vram_load_gb = torch.cuda.memory_allocated() / 1e9
             self.load_time_s = time.time() - t0
             self.model_loaded = True
-            self.logger.info(f"svara-TTS loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
+            self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
@@ -127,102 +109,82 @@ class SvaraBenchmark:
         exp = os.environ.get("ZARAX_BENCHMARK_TOKEN", "")
         return bool(exp) and token == exp
 
-    def _format_prompt(self, text: str, speaker_id: str, style_tag: str) -> str:
-        return f"<custom_token_3>{speaker_id}: {style_tag} {text}<|eot_id|><custom_token_4>"
-
-    def _tokens_to_audio(self, token_ids: list) -> tuple:
+    def _tokens_to_audio(self, tokens: list) -> tuple:
         import torch, numpy as np
-        OFFSET = 128266
-        audio_tokens = [t for t in token_ids if t >= OFFSET]
-        if not audio_tokens:
-            raise ValueError("No audio tokens generated")
-        n = (len(audio_tokens) // 7) * 7
-        audio_tokens = audio_tokens[:n]
-        c0, c1, c2 = [], [], []
-        for i in range(0, n, 7):
-            c0.append(audio_tokens[i] - OFFSET)
-            c1.append(audio_tokens[i+1] - OFFSET)
-            c1.append(audio_tokens[i+4] - OFFSET)
-            c2.append(audio_tokens[i+2] - OFFSET)
-            c2.append(audio_tokens[i+3] - OFFSET)
-            c2.append(audio_tokens[i+5] - OFFSET)
-            c2.append(audio_tokens[i+6] - OFFSET)
+        OFF = 128266
+        at = [t for t in tokens if t >= OFF]
+        if not at: raise ValueError("No audio tokens")
+        n = (len(at)//7)*7; at = at[:n]
+        c0,c1,c2 = [],[],[]
+        for i in range(0,n,7):
+            c0.append(at[i]-OFF); c1.append(at[i+1]-OFF); c1.append(at[i+4]-OFF)
+            c2.append(at[i+2]-OFF); c2.append(at[i+3]-OFF)
+            c2.append(at[i+5]-OFF); c2.append(at[i+6]-OFF)
         dev = next(self.snac.parameters()).device
-        t0 = torch.tensor(c0, dtype=torch.long).unsqueeze(0).to(dev)
-        t1 = torch.tensor(c1, dtype=torch.long).unsqueeze(0).to(dev)
-        t2 = torch.tensor(c2, dtype=torch.long).unsqueeze(0).to(dev)
-        with torch.no_grad():
-            audio = self.snac.decode([t0, t1, t2])
+        t0=torch.tensor(c0,dtype=torch.long).unsqueeze(0).to(dev)
+        t1=torch.tensor(c1,dtype=torch.long).unsqueeze(0).to(dev)
+        t2=torch.tensor(c2,dtype=torch.long).unsqueeze(0).to(dev)
+        with torch.no_grad(): audio = self.snac.decode([t0,t1,t2])
         return audio.squeeze().cpu().numpy().astype(np.float32), 24000
 
-    def _synthesize_one(self, text: str, speaker_id: str, style_tag: str) -> dict:
-        import io, time, torch, numpy as np
-        import soundfile as sf
-        import base64
+    def _synth(self, text: str, speaker_id: str, style_tag: str) -> dict:
+        import io, time, torch, numpy as np, soundfile as sf, base64
         if not getattr(self, "model_loaded", False):
             return {"success": False, "error": "model_not_loaded", "text": text}
-        torch.cuda.reset_peak_memory_stats()
-        t0 = time.time()
+        torch.cuda.reset_peak_memory_stats(); t0 = time.time()
         try:
-            prompt = self._format_prompt(text, speaker_id, style_tag)
+            prompt = f"<custom_token_3>{speaker_id}: {style_tag} {text}<|eot_id|><custom_token_4>"
             inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda:0")
             with torch.no_grad():
-                outputs = self.llm.generate(
+                out = self.llm.generate(
                     **inputs, max_new_tokens=1500, do_sample=True,
                     temperature=0.6, top_p=0.9, repetition_penalty=1.1,
                     pad_token_id=self.tokenizer.eos_token_id,
                 )
-            new_tokens = outputs[0][inputs.input_ids.shape[1]:].tolist()
-            latency_s = time.time() - t0
-            peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
-            audio_np, sr = self._tokens_to_audio(new_tokens)
-            duration_s = len(audio_np) / sr
-            buf = io.BytesIO()
-            sf.write(buf, audio_np, sr, format="WAV", subtype="PCM_16")
-            audio_b64 = base64.b64encode(buf.getvalue()).decode()
+            new_tok = out[0][inputs.input_ids.shape[1]:].tolist()
+            latency_s = time.time()-t0
+            peak_vram_gb = torch.cuda.max_memory_allocated()/1e9
+            audio_np, sr = self._tokens_to_audio(new_tok)
+            duration_s = len(audio_np)/sr
+            buf = io.BytesIO(); sf.write(buf, audio_np, sr, format="WAV", subtype="PCM_16")
             return {
-                "success": True, "audio_b64": audio_b64, "sample_rate": sr,
-                "duration_s": round(duration_s, 2), "latency_s": round(latency_s, 2),
-                "rtf": round(latency_s / max(duration_s, 0.001), 3),
-                "peak_vram_gb": round(peak_vram_gb, 2),
+                "success": True, "audio_b64": base64.b64encode(buf.getvalue()).decode(),
+                "sample_rate": sr, "duration_s": round(duration_s,2),
+                "latency_s": round(latency_s,2),
+                "rtf": round(latency_s/max(duration_s,0.001),3),
+                "peak_vram_gb": round(peak_vram_gb,2),
                 "speaker_id": speaker_id, "style_tag": style_tag,
-                "tokens_generated": len(new_tokens),
-                "audio_tokens": len([t for t in new_tokens if t >= 128266]),
-                "text": text,
+                "audio_tokens": len([t for t in new_tok if t>=128266]), "text": text,
             }
         except Exception as e:
             return {"success": False, "error": str(e), "text": text,
-                    "latency_s": round(time.time() - t0, 2)}
+                    "latency_s": round(time.time()-t0,2)}
 
-    def _wer(self, audio_b64: str, ref_text: str, lang: str) -> dict:
+    def _wer(self, audio_b64: str, ref: str, lang: str) -> dict:
         try:
             import base64, tempfile, os, whisper
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                tmp.write(base64.b64decode(audio_b64)); tmp_path = tmp.name
+                tmp.write(base64.b64decode(audio_b64)); p = tmp.name
             wm = whisper.load_model("base")
             wl = "hi" if "hindi" in lang else "en"
-            res = wm.transcribe(tmp_path, language=wl)
-            transcript = res["text"].strip(); os.unlink(tmp_path)
-            ref_w = ref_text.lower().split(); hyp_w = transcript.lower().split()
-            m, n = len(ref_w), len(hyp_w); dp = list(range(n + 1))
-            for i in range(1, m + 1):
-                ndp = [i] + [0] * n
-                for j in range(1, n + 1):
-                    ndp[j] = dp[j-1] if ref_w[i-1] == hyp_w[j-1] else 1 + min(dp[j], ndp[j-1], dp[j-1])
-                dp = ndp
-            return {"wer": round(dp[n] / max(m, 1), 3), "transcript": transcript}
+            t = wm.transcribe(p, language=wl)["text"].strip(); os.unlink(p)
+            r = ref.lower().split(); h = t.lower().split()
+            m,n = len(r),len(h); dp = list(range(n+1))
+            for i in range(1,m+1):
+                nd=[i]+[0]*n
+                for j in range(1,n+1):
+                    nd[j]=dp[j-1] if r[i-1]==h[j-1] else 1+min(dp[j],nd[j-1],dp[j-1])
+                dp=nd
+            return {"wer": round(dp[n]/max(m,1),3), "transcript": t}
         except Exception as e:
             return {"wer": None, "error": str(e)}
 
-    @modal.fastapi_endpoint(method="GET")
+    @modal.fastapi_endpoint(method="GET", label="svara-health")
     def health(self):
         return {
             "service": "zarax-svara-benchmark", "phase": "7.1",
             "status": "EXPERIMENTAL — isolated from production",
             "model": "kenpath/svara-tts-v1", "license": "Apache 2.0",
-            "base": "canopylabs/orpheus-3b-0.1 (Llama-3.2-3B)",
-            "codec": "hubertsiuzdak/snac_24khz",
-            "official_languages": "19 Indic + Indian English",
             "hindi_official": True,
             "model_loaded": getattr(self, "model_loaded", False),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
@@ -230,36 +192,34 @@ class SvaraBenchmark:
             "load_error": getattr(self, "load_error", None),
         }
 
-    @modal.fastapi_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST", label="svara-synthesize")
     def synthesize(self, request: dict):
         from fastapi import HTTPException
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         text = request.get("text", "").strip()
         lang = request.get("language", "english")
-        if not text or len(text) > 500:
-            raise HTTPException(status_code=400)
+        if not text or len(text) > 500: raise HTTPException(status_code=400)
         speaker_id = SVARA_SPEAKERS.get(lang, "English (Female)")
         style_tag = SVARA_STYLES.get(request.get("category", "conversational"), "<neutral>")
-        result = self._synthesize_one(text, speaker_id, style_tag)
+        result = self._synth(text, speaker_id, style_tag)
         result["model"] = "kenpath/svara-tts-v1"
         return result
 
-    @modal.fastapi_endpoint(method="POST")
+    @modal.fastapi_endpoint(method="POST", label="svara-full-benchmark")
     def run_full_benchmark(self, request: dict):
         from fastapi import HTTPException
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         if not getattr(self, "model_loaded", False):
-            raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_READY"})
+            raise HTTPException(status_code=503)
         run_wer = request.get("run_wer", True)
         results = []
         for s in BENCHMARK_SENTENCES:
-            speaker_id = SVARA_SPEAKERS.get(s["lang"], "English (Female)")
-            style_tag = SVARA_STYLES.get(s["cat"], "<neutral>")
-            self.logger.info(f"[{s['id']}] {s['lang']}: {s['text'][:40]}...")
-            r = self._synthesize_one(s["text"], speaker_id, style_tag)
-            entry = {"id": s["id"], "lang": s["lang"], "category": s["cat"], "text": s["text"], **r}
+            sp = SVARA_SPEAKERS.get(s["lang"], "English (Female)")
+            st = SVARA_STYLES.get(s["cat"], "<neutral>")
+            r = self._synth(s["text"], sp, st)
+            entry = {"id": s["id"], "lang": s["lang"], "cat": s["cat"], "text": s["text"], **r}
             if run_wer and r.get("success") and r.get("audio_b64"):
                 entry["wer_result"] = self._wer(r["audio_b64"], s["text"], s["lang"])
             results.append(entry)
@@ -267,32 +227,27 @@ class SvaraBenchmark:
         by_lang: dict = {}
         for r in results:
             l = r["lang"]
-            if l not in by_lang: by_lang[l] = {"total": 0, "success": 0, "latencies": [], "wers": []}
+            if l not in by_lang: by_lang[l] = {"total":0,"success":0,"lat":[],"wers":[]}
             by_lang[l]["total"] += 1
             if r.get("success"):
                 by_lang[l]["success"] += 1
-                if r.get("latency_s"): by_lang[l]["latencies"].append(r["latency_s"])
-                wer = r.get("wer_result", {}).get("wer")
+                if r.get("latency_s"): by_lang[l]["lat"].append(r["latency_s"])
+                wer = r.get("wer_result",{}).get("wer")
                 if wer is not None: by_lang[l]["wers"].append(wer)
-        summary = {}
-        for lang, st in by_lang.items():
-            summary[lang] = {
-                "success_rate": f"{st['success']}/{st['total']}",
-                "avg_latency_s": round(sum(st["latencies"]) / max(len(st["latencies"]), 1), 2),
-                "avg_wer": round(sum(st["wers"]) / max(len(st["wers"]), 1), 3) if st["wers"] else "UNTESTED",
-            }
+        summary = {l: {
+            "success_rate": f"{st['success']}/{st['total']}",
+            "avg_latency_s": round(sum(st["lat"])/max(len(st["lat"]),1),2),
+            "avg_wer": round(sum(st["wers"])/max(len(st["wers"]),1),3) if st["wers"] else "UNTESTED",
+        } for l,st in by_lang.items()}
         return {
             "phase": "7.1", "model": "kenpath/svara-tts-v1",
-            "base": "canopylabs/orpheus-3b-0.1", "codec": "hubertsiuzdak/snac_24khz",
             "license": "Apache 2.0", "hindi_official": True, "gpu": "L4",
             "model_load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
-            "total_sentences": len(results), "total_successful": len(successful),
-            "peak_vram_gb": max((r.get("peak_vram_gb", 0) for r in results), default=0),
+            "total": len(results), "successful": len(successful),
             "summary_by_language": summary,
-            "mos": "UNTESTED — requires human listening evaluation",
-            "speaker_similarity": "UNTESTED — requires reference audio + embedding model",
-            "voice_clone": "UNTESTED — svara-tts-voiceclone-beta is separate experimental model",
+            "mos": "UNTESTED — requires human listening",
+            "speaker_similarity": "UNTESTED",
             "results": results,
-            "production_impact": "ZERO — isolated benchmark service",
+            "production_impact": "ZERO",
         }
