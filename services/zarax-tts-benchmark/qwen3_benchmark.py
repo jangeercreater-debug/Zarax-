@@ -1,6 +1,16 @@
 """
 Zarax Phase 7.1 — Qwen3-TTS Baseline Benchmark
-EXPERIMENTAL — isolated from production.
+================================================
+EXPERIMENTAL — completely isolated from production.
+
+VERIFIED API (from QwenLM/Qwen3-TTS official source):
+  VoiceDesign checkpoint → generate_voice_design(text, instruct, language)
+  CustomVoice checkpoint → generate_custom_voice(text, speaker, language)
+  Base checkpoint        → generate_voice_clone(text, ref_audio, ref_text)
+
+This benchmark uses:
+  - VoiceDesign for standard TTS (no reference audio)
+  - Base for voice cloning (reference audio required)
 """
 
 import modal
@@ -22,6 +32,7 @@ image = (
     .env({"HF_HOME": "/benchmark/hf_cache"})
 )
 
+# Phase 7.1 benchmark sentences
 BENCHMARK_SENTENCES = [
     {"id": "en_01", "lang": "english",          "cat": "conversational", "text": "Hello, how are you today?"},
     {"id": "en_02", "lang": "english",          "cat": "introduction",   "text": "My name is Zarax. I am your AI assistant."},
@@ -53,6 +64,21 @@ BENCHMARK_SENTENCES = [
     {"id": "hg_05", "lang": "hinglish",         "cat": "conversational", "text": "Sorry yaar, ek minute mein aapko callback milega."},
 ]
 
+# Language → Qwen3-TTS language string mapping
+LANG_MAP = {
+    "english": "English",
+    "hindi": "Hindi",
+    "hindi_devanagari": "Hindi",
+    "hinglish": "Hindi",
+}
+
+# Voice description for VoiceDesign endpoint
+VOICE_INSTRUCT = (
+    "A professional Indian female voice in her late 20s. "
+    "Clear articulation, warm and conversational tone, "
+    "natural prosody with a slight Indian accent."
+)
+
 
 @app.cls(
     gpu="T4",
@@ -70,8 +96,7 @@ class Qwen3Benchmark:
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger("qwen3-benchmark")
         os.makedirs("/benchmark/hf_cache", exist_ok=True)
-        self.logger.info("Loading Qwen3-TTS-12Hz-1.7B-Base (Apache 2.0)...")
-        t0 = time.time()
+
         try:
             import flash_attn  # noqa
             attn = "flash_attention_2"
@@ -79,10 +104,15 @@ class Qwen3Benchmark:
         except ImportError:
             attn = "sdpa"
             self.has_fa2 = False
+
+        # Load VoiceDesign model for standard TTS (no reference audio needed)
+        # Verified API: generate_voice_design(text, instruct, language)
+        self.logger.info("Loading Qwen3-TTS-12Hz-1.7B-VoiceDesign (Apache 2.0)...")
+        t0 = time.time()
         try:
             from qwen_tts import Qwen3TTSModel
             self.model = Qwen3TTSModel.from_pretrained(
-                "Qwen/Qwen3-TTS-12Hz-1.7B",
+                "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
                 device_map="cuda:0",
                 dtype=torch.bfloat16,
                 attn_implementation=attn,
@@ -90,20 +120,13 @@ class Qwen3Benchmark:
             self.vram_load_gb = torch.cuda.memory_allocated() / 1e9
             self.load_time_s = time.time() - t0
             self.model_loaded = True
-            self.model_methods = [m for m in dir(self.model) if not m.startswith('_')]
-            # Log supported speakers for API discovery
-            try:
-                speakers = self.model.get_supported_speakers()
-                self.supported_speakers = speakers
-                self.logger.info(f"Speakers: {speakers[:5]}")
-            except Exception:
-                self.supported_speakers = []
-            self.logger.info(f"Loaded | {self.load_time_s:.1f}s | VRAM: {self.vram_load_gb:.2f}GB")
+            self.logger.info(
+                f"VoiceDesign loaded | {self.load_time_s:.1f}s | "
+                f"VRAM: {self.vram_load_gb:.2f}GB | FA2: {self.has_fa2}"
+            )
         except Exception as e:
             self.model_loaded = False
             self.load_error = str(e)
-            self.model_methods = []
-            self.supported_speakers = []
             self.logger.error(f"Load failed: {e}")
 
     def _auth(self, token: str) -> bool:
@@ -111,46 +134,26 @@ class Qwen3Benchmark:
         exp = os.environ.get("ZARAX_BENCHMARK_TOKEN", "")
         return bool(exp) and token == exp
 
-    def _synth(self, text: str, ref_b64: str | None = None) -> dict:
-        import base64, io, time, torch, numpy as np
-        import soundfile as sf
+    def _synth(self, text: str, lang: str = "english") -> dict:
+        """
+        Standard TTS using VoiceDesign model.
+        Verified API: model.generate_voice_design(text, instruct, language)
+        Returns (List[np.ndarray], sample_rate)
+        """
+        import io, time, torch, numpy as np
+        import soundfile as sf, base64
         if not getattr(self, "model_loaded", False):
             return {"success": False, "error": "model_not_loaded", "text": text}
         torch.cuda.reset_peak_memory_stats()
         t0 = time.time()
         try:
-            m = self.model
-            if ref_b64:
-                import tempfile, os
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                    tmp.write(base64.b64decode(ref_b64))
-                    ref_path = tmp.name
-                wavs, sr = m.generate_voice_clone(text=text, reference_audio=ref_path)
-                try:
-                    os.unlink(ref_path)
-                except Exception:
-                    pass
-                mode = "voice_clone"
-            else:
-                # generate_defaults is a property dict — NOT callable
-                # Use generate_custom_voice with first available speaker
-                speakers = getattr(self, "supported_speakers", [])
-                if speakers and hasattr(m, 'generate_custom_voice'):
-                    wavs, sr = m.generate_custom_voice(text=text, voice=speakers[0])
-                    mode = f"custom_voice:{speakers[0]}"
-                elif hasattr(m, 'generate_voice_design'):
-                    wavs, sr = m.generate_voice_design(text=text)
-                    mode = "voice_design"
-                elif hasattr(m, 'generate_voice_clone'):
-                    # fallback: use voice_clone without reference (may fail)
-                    wavs, sr = m.generate_voice_clone(text=text)
-                    mode = "voice_clone_no_ref"
-                else:
-                    raise AttributeError(
-                        f"No usable synthesis method. Methods: {self.model_methods}, "
-                        f"Speakers: {speakers}"
-                    )
-
+            language = LANG_MAP.get(lang, "English")
+            # Verified API call for VoiceDesign checkpoint
+            wavs, sr = self.model.generate_voice_design(
+                text=text,
+                instruct=VOICE_INSTRUCT,
+                language=language,
+            )
             latency_s = time.time() - t0
             peak_vram_gb = torch.cuda.max_memory_allocated() / 1e9
             audio_np = wavs[0] if isinstance(wavs, list) else wavs
@@ -169,18 +172,65 @@ class Qwen3Benchmark:
                 "rtf": round(latency_s / max(duration_s, 0.001), 3),
                 "peak_vram_gb": round(peak_vram_gb, 2),
                 "flash_attention_2": self.has_fa2,
-                "mode": mode,
+                "mode": "voice_design",
+                "language": language,
                 "text": text,
-                "supported_speakers": getattr(self, "supported_speakers", [])[:3],
             }
         except Exception as e:
             return {
                 "success": False,
                 "error": str(e),
                 "text": text,
-                "model_methods": getattr(self, "model_methods", []),
-                "supported_speakers": getattr(self, "supported_speakers", [])[:5],
+                "latency_s": round(time.time() - t0, 2),
             }
+
+    def _synth_clone(self, text: str, ref_audio_b64: str, ref_text: str = None, lang: str = "english") -> dict:
+        """
+        Voice cloning using Base model (loaded on demand).
+        Verified API: model.generate_voice_clone(text, ref_audio, ref_text, language)
+        ref_audio can be base64 string — confirmed from official docs.
+        """
+        import io, time, torch, numpy as np
+        import soundfile as sf, base64
+        try:
+            from qwen_tts import Qwen3TTSModel
+            base_model = Qwen3TTSModel.from_pretrained(
+                "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+                device_map="cuda:0",
+                dtype=torch.bfloat16,
+            )
+            language = LANG_MAP.get(lang, "English")
+            t0 = time.time()
+            # ref_audio accepts base64 string per official docs
+            wavs, sr = base_model.generate_voice_clone(
+                text=text,
+                ref_audio=ref_audio_b64,
+                ref_text=ref_text,
+                language=language,
+                x_vector_only_mode=(ref_text is None),
+            )
+            latency_s = time.time() - t0
+            audio_np = wavs[0] if isinstance(wavs, list) else wavs
+            if hasattr(audio_np, "cpu"):
+                audio_np = audio_np.cpu().numpy()
+            audio_np = np.squeeze(audio_np).astype(np.float32)
+            duration_s = len(audio_np) / sr
+            buf = io.BytesIO()
+            sf.write(buf, audio_np, sr, format="WAV", subtype="PCM_16")
+            del base_model
+            return {
+                "success": True,
+                "audio_b64": base64.b64encode(buf.getvalue()).decode(),
+                "sample_rate": sr,
+                "duration_s": round(duration_s, 2),
+                "latency_s": round(latency_s, 2),
+                "rtf": round(latency_s / max(duration_s, 0.001), 3),
+                "mode": "voice_clone",
+                "x_vector_only": ref_text is None,
+                "text": text,
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e), "text": text}
 
     def _wer(self, audio_b64: str, ref: str, lang: str) -> dict:
         try:
@@ -208,17 +258,20 @@ class Qwen3Benchmark:
     @modal.fastapi_endpoint(method="GET", label="qwen3-health")
     def health(self):
         return {
-            "service": "zarax-qwen3-benchmark", "phase": "7.1",
+            "service": "zarax-qwen3-benchmark",
+            "phase": "7.1",
             "status": "EXPERIMENTAL — isolated from production",
-            "model": "Qwen3-TTS-12Hz-1.7B", "license": "Apache 2.0",
+            "checkpoint_tts": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "checkpoint_clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+            "license": "Apache 2.0",
             "hindi_official": False,
+            "tts_method": "generate_voice_design(text, instruct, language)",
+            "clone_method": "generate_voice_clone(text, ref_audio, ref_text, language)",
             "model_loaded": getattr(self, "model_loaded", False),
             "flash_attention_2": getattr(self, "has_fa2", False),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
             "load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "load_error": getattr(self, "load_error", None),
-            "model_methods": getattr(self, "model_methods", []),
-            "supported_speakers": getattr(self, "supported_speakers", [])[:5],
         }
 
     @modal.fastapi_endpoint(method="POST", label="qwen3-synthesize")
@@ -227,11 +280,35 @@ class Qwen3Benchmark:
         if not self._auth(request.get("token", "")):
             raise HTTPException(status_code=401)
         text = request.get("text", "").strip()
+        lang = request.get("language", "english")
         if not text or len(text) > 500:
             raise HTTPException(status_code=400)
-        result = self._synth(text, request.get("reference_audio_b64"))
-        result["model"] = "Qwen3-TTS-12Hz-1.7B"
-        result["note"] = "Hindi NOT officially supported."
+        if not getattr(self, "model_loaded", False):
+            raise HTTPException(status_code=503, detail={"code": "MODEL_NOT_READY"})
+        result = self._synth(text, lang)
+        result["checkpoint"] = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+        result["note"] = "Hindi NOT officially supported. VoiceDesign checkpoint used."
+        return result
+
+    @modal.fastapi_endpoint(method="POST", label="qwen3-clone")
+    def clone(self, request: dict):
+        """Voice cloning endpoint — requires reference audio."""
+        from fastapi import HTTPException
+        if not self._auth(request.get("token", "")):
+            raise HTTPException(status_code=401)
+        text = request.get("text", "").strip()
+        ref_b64 = request.get("ref_audio_b64", "")
+        if not text or not ref_b64:
+            raise HTTPException(status_code=400, detail={
+                "error": "text and ref_audio_b64 required"
+            })
+        result = self._synth_clone(
+            text=text,
+            ref_audio_b64=ref_b64,
+            ref_text=request.get("ref_text"),
+            lang=request.get("language", "english"),
+        )
+        result["checkpoint"] = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
         return result
 
     @modal.fastapi_endpoint(method="POST", label="qwen3-full-benchmark")
@@ -244,7 +321,7 @@ class Qwen3Benchmark:
         run_wer = request.get("run_wer", True)
         results = []
         for s in BENCHMARK_SENTENCES:
-            r = self._synth(s["text"])
+            r = self._synth(s["text"], s["lang"])
             entry = {
                 "id": s["id"], "lang": s["lang"],
                 "cat": s["cat"], "text": s["text"], **r
@@ -275,16 +352,19 @@ class Qwen3Benchmark:
             for l, st in by_lang.items()
         }
         return {
-            "phase": "7.1", "model": "Qwen3-TTS-12Hz-1.7B-Base",
-            "license": "Apache 2.0", "hindi_official": False, "gpu": "T4",
+            "phase": "7.1",
+            "checkpoint_tts": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+            "license": "Apache 2.0",
+            "hindi_official": False,
+            "gpu": "T4",
             "flash_attention_2": getattr(self, "has_fa2", False),
             "model_load_time_s": round(getattr(self, "load_time_s", 0), 2),
             "vram_load_gb": round(getattr(self, "vram_load_gb", 0), 2),
-            "supported_speakers": getattr(self, "supported_speakers", [])[:5],
-            "total": len(results), "successful": len(successful),
+            "total": len(results),
+            "successful": len(successful),
             "summary_by_language": summary,
-            "mos": "UNTESTED — requires human listening",
-            "speaker_similarity": "UNTESTED",
+            "mos": "UNTESTED — requires human listening evaluation",
+            "speaker_similarity": "UNTESTED — requires reference audio + embedding model",
             "results": results,
-            "production_impact": "ZERO",
+            "production_impact": "ZERO — isolated benchmark service",
           }
