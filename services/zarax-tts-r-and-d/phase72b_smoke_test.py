@@ -44,7 +44,9 @@ benchmark_secret = modal.Secret.from_name("zarax-benchmark-secret")
 
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    .apt_install("ffmpeg")
     .pip_install(
+        "torchcodec>=0.1.0",
         "transformers>=4.46.0",
         "torch>=2.4.0",
         "torchaudio>=2.4.0",
