@@ -1,0 +1,46 @@
+name: Phase 7.2.C — Full LoRA Training
+
+on:
+  workflow_dispatch:
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Set Modal token
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal token set \
+            --token-id "$MODAL_TOKEN_ID" \
+            --token-secret "$MODAL_TOKEN_SECRET"
+
+      - name: Run Phase 7.2.C Full LoRA Training
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          cd /home/runner/work/Zarax-/Zarax-
+          modal run services/zarax-tts-r-and-d/phase72c_full_lora.py \
+            2>&1 | tee phase72c_log.txt
+          echo "EXIT CODE: $?"
+
+      - name: Upload training log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase72c-results
+          path: phase72c_log.txt
+          retention-days: 30
