@@ -1,0 +1,47 @@
+name: Phase 7.2.G4-A — Controlled Training + English Retention
+
+on:
+  workflow_dispatch:
+
+jobs:
+  g4a-training:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Modal
+        run: pip install modal
+
+      - name: Set Modal token
+        run: |
+          modal token set \
+            --token-id "${{ secrets.MODAL_TOKEN_ID }}" \
+            --token-secret "${{ secrets.MODAL_TOKEN_SECRET }}"
+
+      - name: Create HF secret
+        run: |
+          modal secret create zarax-rnd-hf-secret \
+            HF_TOKEN="${{ secrets.HF_TOKEN }}" \
+            --force || true
+
+      - name: Run Phase 7.2.G4-A
+        run: |
+          modal run services/zarax-tts-r-and-d/phase72g4_controlled_training.py \
+            2>&1 | tee phase72g4_log.txt
+          echo "EXIT CODE: $?"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: phase72g4-results
+          path: |
+            phase72g4_log.txt
+            phase72g4_report.json
+          retention-days: 30
