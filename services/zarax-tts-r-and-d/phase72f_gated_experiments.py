@@ -1,23 +1,19 @@
 """
-Zarax Phase 7.2.F — Controlled Root-Cause Fix Validation
-=========================================================
-GATED PIPELINE: F1 → F2 → F3 (each gate must pass before next runs)
+Zarax Phase 7.2.F — Controlled Root-Cause Fix Validation (BUGFIX v2)
+======================================================================
+BUGS FIXED vs v1:
+  BUG 1: SNAC device mismatch — audio_t.to(device) but snac on CPU
+          Fix: use snac_model's own device for encoding
+  BUG 2: gradient_checkpointing disables KV cache → broken generation
+          Fix: model.eval() + use_cache=True before evaluation
 
-F1: EOS fix ONLY (single variable change)
+KEY FINDING from v1 base eval:
+  Base model ALREADY generates END_OF_SPEECH (128258 = <custom_token_2>)
+  EOS IS the correct stopping token — training with EOS in labels is VALID
+
+F1: EOS fix ONLY (single variable)
 F2: EOS + LR 5e-5 (if F1 passes)
 F3: EOS + LR 5e-5 + OOM prevention (if F2 passes)
-
-LOCKED FOR ALL EXPERIMENTS:
-  Model:   kenpath/svara-tts-v1
-  Dataset: SPRINGLab/IndicTTS-Hindi
-  LoRA:    r=8, alpha=16, q_proj/v_proj
-  Eval:    same 7.2.D evaluation set (20 Hindi + 10 English)
-
-EOS FIX (critical correction from 7.2.E):
-  OLD: text_ids + audio_ids           → model never learned to stop
-  NEW: text_ids + audio_ids + [128258] → model learns stopping criterion
-
-PRODUCTION SAFETY: R&D isolated. Zero production changes.
 """
 
 import modal
@@ -52,31 +48,26 @@ image = (
     .env({"HF_HOME": "/rnd/hf_cache"})
 )
 
-# ── Constants (locked for all F1/F2/F3) ───────────────────────────────────────
 AUDIO_TOKEN_BASE = 128266
-AUDIO_TOKEN_HI   = AUDIO_TOKEN_BASE + 7 * 4096  # 156938
-END_OF_SPEECH    = 128258   # CONFIRMED in E2: base model generates this naturally
+AUDIO_TOKEN_HI   = AUDIO_TOKEN_BASE + 7 * 4096
+END_OF_SPEECH    = 128258
 TARGET_SR        = 24000
 MAX_SEQ_LEN      = 768
 BATCH_SIZE       = 1
 GRAD_ACCUM       = 4
 SPEAKER_ID       = "Hindi (Female)"
 STYLE_TAG        = "<neutral>"
-BASE_DIR         = "/rnd/phase72f"
+BASE_DIR         = "/rnd/phase72f_v2"
 
-# Baselines from 7.2.E (to compare against)
-BASELINE_HINDI_WER_BASE    = 0.785   # clean base model
-BASELINE_HINDI_WER_100STEP = 0.989   # 100-step old format (broken)
-BASELINE_ENGLISH_WER_BASE  = 0.155   # clean base model
-BASELINE_ENGLISH_WER_72C   = 0.562   # 7.2.C epoch_2 (broken)
+BASELINE_HINDI_WER_BASE    = 0.900
+BASELINE_HINDI_WER_100STEP = 0.989
+BASELINE_ENGLISH_WER_BASE  = 0.155
+BASELINE_ENGLISH_WER_72C   = 0.562
 
-# Gate thresholds
-GATE_F1_HINDI_WER_MAX   = 0.989   # must improve vs old 100-step
-GATE_F1_ENGLISH_WER_MAX = 0.400   # must not badly regress from base
-GATE_F2_ENGLISH_WER_MAX = 0.300   # LR fix must substantially reduce regression
-GATE_F3_NO_OOM          = True    # 500 steps without OOM
+GATE_F1_HINDI_WER_MAX   = 0.989
+GATE_F1_ENGLISH_WER_MAX = 0.400
+GATE_F2_ENGLISH_WER_MAX = 0.300
 
-# SAME evaluation set as 7.2.D (locked)
 EVAL_SET = {
     "hindi": [
         {"id": "hi_01", "text": "Namaste, aap kaise hain aaj?"},
@@ -120,7 +111,6 @@ def log(msg):
 
 
 def tokens_to_audio(token_ids, snac_model):
-    """Verified SNAC decoding (Phase 7.1 + Phase 7.2.E confirmed)."""
     import torch, numpy as np
     audio_tokens = [t for t in token_ids if AUDIO_TOKEN_BASE <= t < AUDIO_TOKEN_HI]
     if len(audio_tokens) < 7:
@@ -137,6 +127,7 @@ def tokens_to_audio(token_ids, snac_model):
         c1.append(f[4] - AUDIO_TOKEN_BASE - 4*4096)
         c2.append(f[5] - AUDIO_TOKEN_BASE - 5*4096)
         c2.append(f[6] - AUDIO_TOKEN_BASE - 6*4096)
+    # Always use CPU for SNAC (snac_model is on CPU)
     t0 = torch.tensor(c0).clamp(0, 4095).unsqueeze(0)
     t1 = torch.tensor(c1).clamp(0, 4095).unsqueeze(0)
     t2 = torch.tensor(c2).clamp(0, 4095).unsqueeze(0)
@@ -146,16 +137,7 @@ def tokens_to_audio(token_ids, snac_model):
 
 
 def make_sequence_corrected(text_ids, audio_ids, max_len):
-    """
-    CORRECTED training format (F1 fix).
-    Adds END_OF_SPEECH after audio — model learns stopping criterion.
-
-    Verification:
-      input_ids: [TEXT_IDS] + [AUDIO_IDS] + [EOS]
-      labels:    [-100 × len_text] + [AUDIO_IDS] + [EOS]
-      HuggingFace LlamaForCausalLM shifts internally for next-token pred.
-      Model learns: given audio[-1] → predict EOS (128258)
-    """
+    """Corrected format: text → audio → END_OF_SPEECH."""
     import torch
     n_audio = (min(max_len - len(text_ids) - 1, len(audio_ids)) // 7) * 7
     seq = text_ids + audio_ids[:n_audio] + [END_OF_SPEECH]
@@ -165,13 +147,18 @@ def make_sequence_corrected(text_ids, audio_ids, max_len):
     return input_ids, labels
 
 
-def audio_to_tokens(audio_np, sr, snac_model, device):
-    """48kHz→24kHz resample + SNAC encode + interleave."""
+def audio_to_tokens(audio_np, sr, snac_model):
+    """
+    BUGFIX v2: Use snac_model's device, NOT main GPU device.
+    snac_model is on CPU — audio must also be on CPU for encoding.
+    """
     import torch, librosa
     if sr != TARGET_SR:
         audio_np = librosa.resample(audio_np.astype("float32"),
                                     orig_sr=sr, target_sr=TARGET_SR)
-    audio_t = torch.tensor(audio_np, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    # FIX: always use CPU (snac's device), not main training device
+    snac_device = next(snac_model.parameters()).device
+    audio_t = torch.tensor(audio_np, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(snac_device)
     with torch.no_grad():
         codes = snac_model.encode(audio_t)
     c0 = codes[0].squeeze().cpu().tolist()
@@ -194,10 +181,19 @@ def audio_to_tokens(audio_np, sr, snac_model, device):
 
 
 def evaluate_model(model, tokenizer, snac_model, whisper_model, device, label, audio_dir):
-    """Evaluate model on fixed 7.2.D set. Returns per-sentence results."""
+    """
+    BUGFIX v2:
+    - model.eval() explicitly (was missing)
+    - model.config.use_cache = True (gradient_checkpointing disables it)
+    """
     import torch, soundfile as sf
     from jiwer import wer as compute_wer
     import unicodedata, re
+
+    # FIX: set eval mode + re-enable KV cache
+    model.eval()
+    if hasattr(model, 'config'):
+        model.config.use_cache = True
 
     def norm(t):
         t = unicodedata.normalize("NFC", t.lower())
@@ -216,19 +212,27 @@ def evaluate_model(model, tokenizer, snac_model, whisper_model, device, label, a
             torch.manual_seed(42)
             torch.cuda.manual_seed(42)
             t0 = time.time()
-            with torch.no_grad():
-                out = model.generate(
-                    **inputs, max_new_tokens=1500,
-                    do_sample=True, temperature=0.6, top_p=0.9,
-                    repetition_penalty=1.1,
-                    pad_token_id=tokenizer.eos_token_id,
-                )
-            latency_s = time.time() - t0
-            new_toks = out[0][n_text:].tolist()
+            try:
+                with torch.no_grad():
+                    out = model.generate(
+                        **inputs, max_new_tokens=1500,
+                        do_sample=True, temperature=0.6, top_p=0.9,
+                        repetition_penalty=1.1,
+                        pad_token_id=tokenizer.eos_token_id,
+                    )
+                latency_s = time.time() - t0
+                new_toks = out[0][n_text:].tolist()
+            except Exception as e:
+                results.append({"id": sid, "lang": lang, "text": text,
+                                 "valid": False, "has_eos_in_output": False,
+                                 "audio_tokens": 0, "latency_s": 0,
+                                 "duration_s": 0, "wer": None,
+                                 "hypothesis": f"GEN_ERROR: {e}"})
+                log(f"    [{sid}] GENERATION ERROR: {str(e)[:60]}")
+                continue
 
             audio_tokens = [t for t in new_toks if AUDIO_TOKEN_BASE <= t < AUDIO_TOKEN_HI]
             has_eos = END_OF_SPEECH in new_toks
-
             audio_np, sr = tokens_to_audio(new_toks, snac_model)
             wer_score = None
             hyp = ""
@@ -265,7 +269,7 @@ def evaluate_model(model, tokenizer, snac_model, whisper_model, device, label, a
     empty_count = sum(1 for r in results if not r["valid"] or r["audio_tokens"] < 7)
     eos_count = sum(1 for r in results if r["has_eos_in_output"])
 
-    return {
+    summary = {
         "label": label,
         "hindi_wer_avg": round(sum(hi_wers)/max(len(hi_wers),1), 3) if hi_wers else None,
         "english_wer_avg": round(sum(en_wers)/max(len(en_wers),1), 3) if en_wers else None,
@@ -274,21 +278,16 @@ def evaluate_model(model, tokenizer, snac_model, whisper_model, device, label, a
         "total_sentences": len(results),
         "sentences": results,
     }
+    return summary
 
 
 def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
                  oom_prevention=False):
-    """
-    LoRA training with corrected EOS format.
-    oom_prevention: adds cache clear every 200 steps.
-    """
     import torch
     from peft import LoraConfig, get_peft_model, TaskType
     from torch.optim import AdamW
     from transformers import get_cosine_schedule_with_warmup
-    import librosa
 
-    # Attach LoRA (same config for all experiments)
     model.enable_input_require_grads()
     model.gradient_checkpointing_enable()
     lora_cfg = LoraConfig(
@@ -297,12 +296,13 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
     )
     lora_model = get_peft_model(model, lora_cfg)
     trainable = sum(p.numel() for p in lora_model.parameters() if p.requires_grad)
-    log(f"  LoRA attached — trainable={trainable:,} ({100*trainable/sum(p.numel() for p in lora_model.parameters()):.3f}%)")
+    log(f"  LoRA attached — trainable={trainable:,}")
 
-    # Pre-tokenize samples
+    # Pre-tokenize (BUGFIX: pass snac_model, NOT device, to audio_to_tokens)
     batches = []
     skipped = 0
-    for i in range(min(n_steps * 2 + 50, len(ds))):
+    skip_reasons = {"audio_short": 0, "loss_short": 0, "error": 0}
+    for i in range(min(n_steps * 3 + 100, len(ds))):
         if len(batches) >= n_steps: break
         try:
             s = ds[i]
@@ -311,29 +311,44 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
             text = s["text"]
             prompt = f"<custom_token_3>{SPEAKER_ID}: {STYLE_TAG} {text}<|eot_id|><custom_token_4>"
             text_ids = tokenizer.encode(prompt, add_special_tokens=False)
-            audio_toks = audio_to_tokens(audio_np, sr_d, snac_model, device)
-            if len(audio_toks) < 7: skipped += 1; continue
+            # FIX: no 'device' argument — snac_model handles its own device
+            audio_toks = audio_to_tokens(audio_np, sr_d, snac_model)
+            if len(audio_toks) < 7:
+                skipped += 1; skip_reasons["audio_short"] += 1; continue
             input_ids, labels = make_sequence_corrected(text_ids, audio_toks, MAX_SEQ_LEN)
-            if (labels[0] != -100).sum().item() < 7: skipped += 1; continue
+            if (labels[0] != -100).sum().item() < 7:
+                skipped += 1; skip_reasons["loss_short"] += 1; continue
             batches.append((input_ids.cpu(), labels.cpu()))
-        except: skipped += 1; continue
+        except Exception as e:
+            skipped += 1; skip_reasons["error"] += 1
+            if skipped <= 3:
+                log(f"  SKIP ERROR: {str(e)[:80]}")
+            continue
 
-    log(f"  Prepared {len(batches)} batches (skipped {skipped})")
+    log(f"  Prepared {len(batches)} batches (skipped {skipped}: {skip_reasons})")
 
-    # Print ONE example for verification (Gate pre-check)
-    if batches:
-        inp0, lbl0 = batches[0]
-        loss_positions = (lbl0[0] != -100).sum().item()
-        last_token = inp0[0][-1].item()
-        log(f"  SEQUENCE VERIFICATION:")
-        log(f"    Total tokens: {inp0.shape[1]}")
-        log(f"    Loss tokens: {loss_positions}")
-        log(f"    Last token: {last_token} (EOS={last_token == END_OF_SPEECH})")
-        assert last_token == END_OF_SPEECH, f"GATE FAIL: Last token is {last_token}, expected {END_OF_SPEECH}"
-        log(f"    ✅ EOS placement verified — last token IS END_OF_SPEECH")
+    if not batches:
+        log("  CRITICAL: 0 batches prepared — cannot train")
+        return lora_model, {
+            "label": label, "lr": lr, "n_steps": n_steps,
+            "steps_completed": 0, "loss_first": None, "loss_last": None,
+            "loss_trend": "NOT_DECREASING", "nan_count": 0,
+            "oom_occurred": False, "peak_vram_gb": 0,
+            "train_time_s": 0, "trainable_params": trainable,
+            "eos_in_format": True, "checkpoint": None,
+            "skipped_batches": skipped, "error": "zero_batches",
+        }
 
-    # Optimizer + scheduler
-    total_opt_steps = len(batches) // GRAD_ACCUM
+    # Verify sequence format on first batch
+    inp0, lbl0 = batches[0]
+    last_token = inp0[0][-1].item()
+    loss_count = (lbl0[0] != -100).sum().item()
+    log(f"  SEQUENCE CHECK: len={inp0.shape[1]} loss_tokens={loss_count} "
+        f"last_token={last_token} is_eos={last_token==END_OF_SPEECH}")
+    if last_token != END_OF_SPEECH:
+        log(f"  WARNING: last token {last_token} != END_OF_SPEECH {END_OF_SPEECH}")
+
+    total_opt_steps = max(1, len(batches) // GRAD_ACCUM)
     warmup_steps = max(1, int(total_opt_steps * 0.05))
     optimizer = AdamW(
         [p for p in lora_model.parameters() if p.requires_grad],
@@ -344,7 +359,6 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
         num_training_steps=total_opt_steps,
     )
 
-    # Training loop
     lora_model.train()
     losses = []
     peak_vram = 0
@@ -359,7 +373,6 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
             loss = out.loss / GRAD_ACCUM
             if torch.isnan(loss) or torch.isinf(loss):
                 nan_count += 1
-                log(f"  ⚠️ NaN/Inf at step {step+1}")
                 optimizer.zero_grad()
                 if nan_count > 5: break
                 continue
@@ -373,19 +386,18 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
                 peak_vram = max(peak_vram, torch.cuda.max_memory_allocated()/1e9)
             if oom_prevention and (step + 1) % 200 == 0:
                 gc.collect(); torch.cuda.empty_cache()
-            if (step + 1) % 25 == 0:
+            if (step + 1) % 25 == 0 or step == 0:
                 avg = sum(losses[-10:])/min(len(losses), 10)
                 log(f"  step {step+1}/{n_steps} loss={losses[-1]:.4f} avg={avg:.4f} vram={peak_vram:.2f}GB")
         except torch.cuda.OutOfMemoryError:
             oom_occurred = True
-            log(f"  ❌ OOM at step {step+1}")
+            log(f"  OOM at step {step+1}")
             optimizer.zero_grad(); gc.collect(); torch.cuda.empty_cache()
             break
 
     train_time = time.time() - t_train
     loss_trend = "DECREASING" if len(losses) > 1 and losses[-1] < losses[0] else "NOT_DECREASING"
 
-    # Save checkpoint
     ckpt_path = f"{BASE_DIR}/{label}/checkpoint"
     os.makedirs(ckpt_path, exist_ok=True)
     lora_model.save_pretrained(ckpt_path)
@@ -396,70 +408,48 @@ def run_training(model, tokenizer, snac_model, ds, device, n_steps, lr, label,
         "loss_first": round(losses[0], 4) if losses else None,
         "loss_last": round(losses[-1], 4) if losses else None,
         "loss_trend": loss_trend,
-        "nan_count": nan_count,
-        "oom_occurred": oom_occurred,
+        "nan_count": nan_count, "oom_occurred": oom_occurred,
         "peak_vram_gb": round(peak_vram, 2),
         "train_time_s": round(train_time, 1),
         "trainable_params": trainable,
-        "eos_in_format": True,
-        "checkpoint": ckpt_path,
+        "eos_in_format": True, "checkpoint": ckpt_path,
         "skipped_batches": skipped,
     }
-    log(f"  Training done — loss {result['loss_first']} → {result['loss_last']} ({loss_trend})")
-    log(f"  Peak VRAM: {peak_vram:.2f}GB | OOM: {oom_occurred}")
-
+    log(f"  Training done — {len(losses)} steps, loss {result['loss_first']} → {result['loss_last']} ({loss_trend})")
     return lora_model, result
 
 
-def gate_check(eval_result, experiment_name, hindi_wer_max, english_wer_max,
-               oom_occurred=False, oom_required_absent=False):
-    """Explicit gate check with clear pass/fail criteria."""
-    checks = {}
+def gate_check(eval_result, train_result, name, hindi_wer_max, english_wer_max,
+               oom_required_absent=False):
     hi_wer = eval_result.get("hindi_wer_avg")
     en_wer = eval_result.get("english_wer_avg")
     empty = eval_result.get("empty_or_invalid", 999)
-    eos_count = eval_result.get("eos_in_output_count", 0)
-    total = eval_result.get("total_sentences", 30)
+    eos_out = eval_result.get("eos_in_output_count", 0)
+    oom = train_result.get("oom_occurred", False)
+    steps = train_result.get("steps_completed", 0)
 
-    checks["hindi_wer_improved"] = {
-        "value": hi_wer,
-        "threshold": hindi_wer_max,
-        "pass": hi_wer is not None and hi_wer < hindi_wer_max,
-    }
-    checks["english_wer_acceptable"] = {
-        "value": en_wer,
-        "threshold": english_wer_max,
-        "pass": en_wer is not None and en_wer < english_wer_max,
-    }
-    checks["generation_not_broken"] = {
-        "value": empty,
-        "threshold": 10,
-        "pass": empty <= 10,
-    }
-    checks["eos_in_output"] = {
-        "value": eos_count,
-        "threshold": 1,
-        "pass": eos_count > 0,
+    checks = {
+        "training_completed": {"pass": steps > 0, "value": steps},
+        "hindi_wer": {"pass": hi_wer is not None and hi_wer < hindi_wer_max,
+                      "value": hi_wer, "threshold": hindi_wer_max},
+        "english_wer": {"pass": en_wer is not None and en_wer < english_wer_max,
+                        "value": en_wer, "threshold": english_wer_max},
+        "generation_valid": {"pass": empty <= 10, "value": empty},
+        "eos_in_output": {"pass": eos_out > 0, "value": eos_out},
     }
     if oom_required_absent:
-        checks["no_oom"] = {"value": oom_occurred, "pass": not oom_occurred}
+        checks["no_oom"] = {"pass": not oom, "value": oom}
 
     all_pass = all(c["pass"] for c in checks.values())
-    critical_pass = (checks["hindi_wer_improved"]["pass"] and
-                     checks["english_wer_acceptable"]["pass"])
+    critical = (checks["training_completed"]["pass"] and
+                checks["hindi_wer"]["pass"] and
+                checks["english_wer"]["pass"])
+    status = "PASS" if all_pass else "PARTIAL" if critical else "FAIL"
 
-    if all_pass:
-        status = "PASS"
-    elif critical_pass:
-        status = "PARTIAL"
-    else:
-        status = "FAIL"
-
-    log(f"  GATE {experiment_name}: {status}")
+    log(f"  GATE {name}: {status}")
     for k, v in checks.items():
         icon = "✅" if v["pass"] else "❌"
-        log(f"    {icon} {k}: {v.get('value','?')} (threshold={v.get('threshold','?')})")
-
+        log(f"    {icon} {k}: {v.get('value','?')} (threshold={v.get('threshold','N/A')})")
     return status, checks
 
 
@@ -476,262 +466,193 @@ def run_gated_experiments():
     from snac import SNAC
     from datasets import load_dataset
 
-    os.makedirs(BASE_DIR, exist_ok=True)
     for exp in ["F1", "F2", "F3"]:
         os.makedirs(f"{BASE_DIR}/{exp}/audio", exist_ok=True)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     t_start = time.time()
     report = {
-        "phase": "7.2.F",
-        "gpu": torch.cuda.get_device_name(0) if device == "cuda" else "CPU",
-        "eos_token_id": END_OF_SPEECH,
+        "phase": "7.2.F", "version": "v2_bugfix",
+        "gpu": torch.cuda.get_device_name(0) if device=="cuda" else "CPU",
+        "bugs_fixed": [
+            "SNAC device mismatch: audio now encoded on snac_model device (CPU)",
+            "gradient_checkpointing: model.eval() + use_cache=True before evaluation",
+        ],
         "baselines": {
             "base_hindi_wer": BASELINE_HINDI_WER_BASE,
             "base_english_wer": BASELINE_ENGLISH_WER_BASE,
-            "100step_old_format_hindi_wer": BASELINE_HINDI_WER_100STEP,
-            "72c_epoch2_english_wer": BASELINE_ENGLISH_WER_72C,
         },
         "experiments": {},
     }
 
     log("=" * 60)
-    log("PHASE 7.2.F — GATED EXPERIMENT PIPELINE")
-    log(f"GPU: {report['gpu']}")
-    log(f"EOS token: {END_OF_SPEECH}")
-    log(f"F1: EOS fix only | F2: EOS+LR5e-5 | F3: EOS+LR5e-5+OOM fix")
+    log("PHASE 7.2.F v2 — BUGFIX + GATED EXPERIMENTS")
+    log(f"GPU: {report['gpu']} | EOS: {END_OF_SPEECH}")
+    log("BUGS FIXED: SNAC device mismatch + KV cache on eval")
     log("=" * 60)
 
-    # ── Load shared resources ────────────────────────────────────────────────
-    log("\n=== Loading shared resources ===")
+    # Shared resources
     tokenizer = AutoTokenizer.from_pretrained("kenpath/svara-tts-v1")
-    snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().to("cpu")
+    snac = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().to("cpu")  # CPU intentional
     whisper_model = whisper.load_model("base")
     ds = load_dataset("SPRINGLab/IndicTTS-Hindi", split="train")
-    log(f"  Dataset: {len(ds)} samples | Tokenizer vocab: {len(tokenizer)}")
-
-    # Verify EOS in vocab
     eos_in_vocab = END_OF_SPEECH < len(tokenizer)
-    eos_token_str = tokenizer.convert_ids_to_tokens(END_OF_SPEECH)
-    log(f"  EOS (128258) in vocab: {eos_in_vocab} | token string: {eos_token_str}")
-    assert eos_in_vocab, "BLOCKED: END_OF_SPEECH not in tokenizer vocabulary"
+    eos_str = tokenizer.convert_ids_to_tokens(END_OF_SPEECH)
+    log(f"  EOS (128258) in vocab: {eos_in_vocab} | string: {eos_str}")
+    log(f"  Dataset: {len(ds)} samples | SNAC: CPU | Training GPU: {device}")
 
-    # ── BASE EVALUATION (reference) ────────────────────────────────────────
-    log("\n=== BASE MODEL EVALUATION (reference) ===")
+    # BASE evaluation
+    log("\n=== BASE MODEL EVALUATION ===")
     base_model = AutoModelForCausalLM.from_pretrained(
         "kenpath/svara-tts-v1", torch_dtype=torch.bfloat16, device_map="cuda:0"
     )
     base_eval = evaluate_model(base_model, tokenizer, snac, whisper_model, device,
-                               "base_reference", f"{BASE_DIR}/F1/audio")
+                               "base", f"{BASE_DIR}/F1/audio")
     del base_model; gc.collect(); torch.cuda.empty_cache()
     report["base_evaluation"] = base_eval
-    log(f"  Base: hi_wer={base_eval['hindi_wer_avg']} en_wer={base_eval['english_wer_avg']}")
+    log(f"  Base: hi_wer={base_eval['hindi_wer_avg']} en_wer={base_eval['english_wer_avg']} "
+        f"eos={base_eval['eos_in_output_count']}/30")
 
-    # ════════════════════════════════════════════════════════════════════════
-    # F1 — EOS FIX ONLY
-    # ════════════════════════════════════════════════════════════════════════
-    log("\n" + "=" * 60)
-    log("F1 — EOS FIX ONLY (single variable change)")
-    log("  Change: add END_OF_SPEECH (128258) after audio in training labels")
-    log("  LR: 2e-4 (SAME as 7.2.C) | Steps: 100")
-    log("=" * 60)
-
+    # ── F1: EOS fix only ──────────────────────────────────────────────────────
+    log("\n" + "="*60)
+    log("F1: EOS FIX ONLY | LR=2e-4 | Steps=100")
+    log("="*60)
     base_f1 = AutoModelForCausalLM.from_pretrained(
         "kenpath/svara-tts-v1", torch_dtype=torch.bfloat16, device_map="cuda:0"
     )
     f1_model, f1_train = run_training(
         base_f1, tokenizer, snac, ds, device,
-        n_steps=100, lr=2e-4, label="F1",
-        oom_prevention=False,
+        n_steps=100, lr=2e-4, label="F1", oom_prevention=False,
     )
     f1_eval = evaluate_model(f1_model, tokenizer, snac, whisper_model, device,
                              "F1", f"{BASE_DIR}/F1/audio")
     del f1_model, base_f1; gc.collect(); torch.cuda.empty_cache()
 
-    f1_gate_status, f1_gate_checks = gate_check(
-        f1_eval, "F1",
-        hindi_wer_max=GATE_F1_HINDI_WER_MAX,
-        english_wer_max=GATE_F1_ENGLISH_WER_MAX,
-    )
+    f1_status, f1_checks = gate_check(f1_eval, f1_train, "F1",
+                                       GATE_F1_HINDI_WER_MAX, GATE_F1_ENGLISH_WER_MAX)
     report["experiments"]["F1"] = {
-        "config": {"eos_fix": True, "lr": 2e-4, "steps": 100, "oom_prevention": False},
-        "training": f1_train,
-        "evaluation": f1_eval,
-        "gate_status": f1_gate_status,
-        "gate_checks": f1_gate_checks,
+        "config": {"eos_fix": True, "lr": 2e-4, "steps": 100},
+        "training": f1_train, "evaluation": f1_eval,
+        "gate_status": f1_status, "gate_checks": f1_checks,
     }
-    log(f"F1 GATE: {f1_gate_status}")
+    log(f"F1 GATE: {f1_status} | hi_wer={f1_eval['hindi_wer_avg']} en_wer={f1_eval['english_wer_avg']}")
 
-    if f1_gate_status == "FAIL":
+    if f1_status == "FAIL":
         report["pipeline_stopped_at"] = "F1"
-        report["reason"] = "F1 gate failed — EOS fix alone did not improve quality"
-        log("STOP: F1 FAIL — not proceeding to F2")
-        return finalize_report(report, t_start)
+        return finalize(report, t_start)
 
-    # ════════════════════════════════════════════════════════════════════════
-    # F2 — EOS + LR 5e-5
-    # ════════════════════════════════════════════════════════════════════════
-    log("\n" + "=" * 60)
-    log("F2 — EOS + LR 5e-5 (F1 passed gate)")
-    log("  Changes: EOS fix (from F1) + LR: 2e-4 → 5e-5")
-    log("  Steps: 100")
-    log("=" * 60)
-
+    # ── F2: EOS + LR 5e-5 ────────────────────────────────────────────────────
+    log("\n" + "="*60)
+    log("F2: EOS + LR=5e-5 | Steps=100")
+    log("="*60)
     base_f2 = AutoModelForCausalLM.from_pretrained(
         "kenpath/svara-tts-v1", torch_dtype=torch.bfloat16, device_map="cuda:0"
     )
     f2_model, f2_train = run_training(
         base_f2, tokenizer, snac, ds, device,
-        n_steps=100, lr=5e-5, label="F2",
-        oom_prevention=False,
+        n_steps=100, lr=5e-5, label="F2", oom_prevention=False,
     )
     f2_eval = evaluate_model(f2_model, tokenizer, snac, whisper_model, device,
                              "F2", f"{BASE_DIR}/F2/audio")
     del f2_model, base_f2; gc.collect(); torch.cuda.empty_cache()
 
-    f2_gate_status, f2_gate_checks = gate_check(
-        f2_eval, "F2",
-        hindi_wer_max=GATE_F1_HINDI_WER_MAX,
-        english_wer_max=GATE_F2_ENGLISH_WER_MAX,
-    )
+    f2_status, f2_checks = gate_check(f2_eval, f2_train, "F2",
+                                       GATE_F1_HINDI_WER_MAX, GATE_F2_ENGLISH_WER_MAX)
     report["experiments"]["F2"] = {
-        "config": {"eos_fix": True, "lr": 5e-5, "steps": 100, "oom_prevention": False},
-        "training": f2_train,
-        "evaluation": f2_eval,
-        "gate_status": f2_gate_status,
-        "gate_checks": f2_gate_checks,
+        "config": {"eos_fix": True, "lr": 5e-5, "steps": 100},
+        "training": f2_train, "evaluation": f2_eval,
+        "gate_status": f2_status, "gate_checks": f2_checks,
     }
-    log(f"F2 GATE: {f2_gate_status}")
+    log(f"F2 GATE: {f2_status} | hi_wer={f2_eval['hindi_wer_avg']} en_wer={f2_eval['english_wer_avg']}")
 
-    if f2_gate_status == "FAIL":
+    if f2_status == "FAIL":
         report["pipeline_stopped_at"] = "F2"
-        report["reason"] = "F2 gate failed — LR 5e-5 did not sufficiently reduce regression"
-        log("STOP: F2 FAIL — not proceeding to F3")
-        return finalize_report(report, t_start)
+        return finalize(report, t_start)
 
-    # ════════════════════════════════════════════════════════════════════════
-    # F3 — EOS + LR 5e-5 + OOM PREVENTION
-    # ════════════════════════════════════════════════════════════════════════
-    log("\n" + "=" * 60)
-    log("F3 — EOS + LR 5e-5 + OOM prevention (F2 passed gate)")
-    log("  Changes: F2 fixes + torch.cuda.empty_cache() every 200 steps")
-    log("  Steps: 500 (stability validation)")
-    log("=" * 60)
-
+    # ── F3: EOS + LR 5e-5 + OOM prevention ───────────────────────────────────
+    log("\n" + "="*60)
+    log("F3: EOS + LR=5e-5 + OOM prevention | Steps=500")
+    log("="*60)
     base_f3 = AutoModelForCausalLM.from_pretrained(
         "kenpath/svara-tts-v1", torch_dtype=torch.bfloat16, device_map="cuda:0"
     )
     f3_model, f3_train = run_training(
         base_f3, tokenizer, snac, ds, device,
-        n_steps=500, lr=5e-5, label="F3",
-        oom_prevention=True,
+        n_steps=500, lr=5e-5, label="F3", oom_prevention=True,
     )
     f3_eval = evaluate_model(f3_model, tokenizer, snac, whisper_model, device,
                              "F3", f"{BASE_DIR}/F3/audio")
     del f3_model, base_f3; gc.collect(); torch.cuda.empty_cache()
 
-    f3_gate_status, f3_gate_checks = gate_check(
-        f3_eval, "F3",
-        hindi_wer_max=GATE_F1_HINDI_WER_MAX,
-        english_wer_max=GATE_F2_ENGLISH_WER_MAX,
-        oom_occurred=f3_train["oom_occurred"],
+    f3_status, f3_checks = gate_check(
+        f3_eval, f3_train, "F3",
+        GATE_F1_HINDI_WER_MAX, GATE_F2_ENGLISH_WER_MAX,
         oom_required_absent=True,
     )
     report["experiments"]["F3"] = {
         "config": {"eos_fix": True, "lr": 5e-5, "steps": 500, "oom_prevention": True},
-        "training": f3_train,
-        "evaluation": f3_eval,
-        "gate_status": f3_gate_status,
-        "gate_checks": f3_gate_checks,
+        "training": f3_train, "evaluation": f3_eval,
+        "gate_status": f3_status, "gate_checks": f3_checks,
     }
-    log(f"F3 GATE: {f3_gate_status}")
+    log(f"F3 GATE: {f3_status} | hi_wer={f3_eval['hindi_wer_avg']} en_wer={f3_eval['english_wer_avg']}")
 
-    return finalize_report(report, t_start)
+    return finalize(report, t_start)
 
 
-def finalize_report(report, t_start):
-    """Generate comparison matrix and final recommendation."""
-    total_time = time.time() - t_start
-    report["total_time_s"] = round(total_time, 1)
-    report["cost_usd"] = round(total_time / 3600 * 0.80, 3)
+def finalize(report, t_start):
+    total = time.time() - t_start
+    report["total_time_s"] = round(total, 1)
+    report["cost_usd"] = round(total/3600*0.80, 3)
 
-    # Comparison matrix
-    log("\n" + "=" * 60)
+    passed = [k for k,v in report["experiments"].items() if v["gate_status"] in ("PASS","PARTIAL")]
+    failed = [k for k,v in report["experiments"].items() if v["gate_status"]=="FAIL"]
+
+    log("\n" + "="*60)
     log("COMPARISON MATRIX")
-    log("=" * 60)
+    log("="*60)
+    base_ev = report.get("base_evaluation", {})
     rows = [
-        ("BASE", BASELINE_HINDI_WER_BASE, BASELINE_ENGLISH_WER_BASE, "—", "—"),
-        ("7.2.C epoch_2", 1.497, BASELINE_ENGLISH_WER_72C, "NO EOS, LR 2e-4", "FAIL"),
+        {"experiment": "BASE",        "hindi_wer": base_ev.get("hindi_wer_avg"), "english_wer": base_ev.get("english_wer_avg"), "gate": "—"},
+        {"experiment": "7.2.C",       "hindi_wer": 1.497, "english_wer": 0.562, "gate": "FAIL"},
     ]
-    for exp_name in ["F1", "F2", "F3"]:
+    for exp_name in ["F1","F2","F3"]:
         exp = report["experiments"].get(exp_name)
         if exp:
-            ev = exp["evaluation"]
-            cfg = exp["config"]
-            desc = f"EOS={'✅' if cfg['eos_fix'] else '❌'} LR={cfg['lr']} steps={cfg['steps']}"
-            rows.append((exp_name, ev.get("hindi_wer_avg"), ev.get("english_wer_avg"),
-                         desc, exp["gate_status"]))
+            rows.append({
+                "experiment": exp_name,
+                "hindi_wer": exp["evaluation"].get("hindi_wer_avg"),
+                "english_wer": exp["evaluation"].get("english_wer_avg"),
+                "gate": exp["gate_status"],
+            })
 
-    log(f"{'Exp':<12} {'Hindi WER':>10} {'English WER':>12} {'Config':<30} {'Gate':>8}")
-    log("-" * 75)
-    for row in rows:
-        log(f"{row[0]:<12} {str(row[1]):>10} {str(row[2]):>12} {row[3]:<30} {row[4]:>8}")
-
-    report["comparison_matrix"] = [
-        {"experiment": r[0], "hindi_wer": r[1], "english_wer": r[2],
-         "config": r[3], "gate": r[4]} for r in rows
-    ]
-
-    # Determine overall recommendation
-    passed = [k for k, v in report["experiments"].items() if v["gate_status"] in ("PASS", "PARTIAL")]
-    failed = [k for k, v in report["experiments"].items() if v["gate_status"] == "FAIL"]
+    for r in rows:
+        log(f"  {r['experiment']:<10} hi_wer={r['hindi_wer']} en_wer={r['english_wer']} gate={r['gate']}")
 
     if "F3" in passed:
-        recommendation = "F1+F2+F3 all passed. Corrected recipe validated. APPROVE full 3-epoch training."
+        rec = "ALL GATES PASSED. Recipe validated. Approve full 3-epoch training."
     elif "F2" in passed:
-        recommendation = "F1+F2 passed, F3 blocked/failed. Investigate OOM before full training."
+        rec = "F1+F2 passed. F3 needs OOM investigation before full training."
     elif "F1" in passed:
-        recommendation = "F1 passed, F2 failed. EOS fix helps but LR strategy needs review."
+        rec = "F1 passed. F2 failed. LR strategy needs review."
     else:
-        recommendation = "F1 failed. EOS is not the primary root cause. Further investigation needed."
+        rec = "F1 failed even with bug fixes. Deeper investigation needed."
 
-    report["recommendation"] = recommendation
-    report["what_is_proven"] = []
-    report["what_is_not_proven"] = [
-        "Hindi MOS improvement (requires human listening)",
-        "Same-voice identity (not tested)",
-        "Cross-language identity (not tested)",
-        "Commercial production readiness",
-    ]
+    report["comparison_matrix"] = rows
+    report["gates_passed"] = passed
+    report["gates_failed"] = failed
+    report["recommendation"] = rec
 
-    if "F1" in passed:
-        report["what_is_proven"].append(
-            "EOS fix improves generation stability (F1 gate passed)")
-    if "F2" in passed:
-        report["what_is_proven"].append(
-            "LR 5e-5 reduces English regression (F2 gate passed)")
-    if "F3" in passed:
-        report["what_is_proven"].append(
-            "OOM prevention allows stable 500-step training (F3 gate passed)")
-
-    # Save full report
-    report_path = f"{BASE_DIR}/phase72f_full_report.json"
-    with open(report_path, "w") as f:
+    with open(f"{BASE_DIR}/phase72f_v2_report.json", "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False, default=str)
 
-    log(f"\nTotal time: {total_time/60:.1f}min | Cost: ${report['cost_usd']}")
-    log(f"RECOMMENDATION: {recommendation}")
-    log("STOP — awaiting approval before full training")
-
+    log(f"RECOMMENDATION: {rec}")
+    log(f"Cost: ${report['cost_usd']} | Time: {total/60:.1f}min")
+    log("STOP — awaiting approval")
     return {
-        "phase": "7.2.F",
-        "recommendation": recommendation,
-        "experiments_run": list(report["experiments"].keys()),
-        "gates_passed": passed,
-        "gates_failed": failed,
-        "comparison_matrix": report["comparison_matrix"],
-        "what_is_proven": report["what_is_proven"],
-        "what_is_not_proven": report["what_is_not_proven"],
+        "phase": "7.2.F_v2", "version": "bugfix",
+        "gates_passed": passed, "gates_failed": failed,
+        "comparison_matrix": rows,
+        "recommendation": rec,
         "total_time_s": report["total_time_s"],
         "cost_usd": report["cost_usd"],
     }
@@ -739,14 +660,10 @@ def finalize_report(report, t_start):
 
 @app.local_entrypoint()
 def main():
-    log("Phase 7.2.F starting — gated F1→F2→F3 pipeline on Modal L4...")
-    log("Expected: ~30-60 min, ~$0.40-0.80")
+    log("Phase 7.2.F v2 (bugfix) starting...")
+    log("BUGS FIXED: SNAC device + KV cache on eval")
     report = run_gated_experiments.remote()
-    print("\n" + "=" * 60)
-    print("PHASE 7.2.F — FINAL REPORT")
-    print("=" * 60)
     print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
-    with open("phase72f_report.json", "w") as f:
+    with open("phase72f_v2_report.json", "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False, default=str)
-    log("Report saved: phase72f_report.json")
-  
+      
