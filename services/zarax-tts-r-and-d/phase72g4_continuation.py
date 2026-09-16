@@ -382,6 +382,10 @@ def run_continuation():
         "kenpath/svara-tts-v1", torch_dtype=torch.bfloat16, device_map="cuda:0"
     )
     lora_model = PeftModel.from_pretrained(base, STEP2000_CKPT)
+    # Fix: PeftModel.from_pretrained disables all grads — re-enable LoRA params
+    for name, param in lora_model.named_parameters():
+    if 'lora_' in name:
+        param.requires_grad = True
     load_time = time.time() - t_load
     vram = torch.cuda.memory_allocated()/1e9
     log(f"  Model + adapter loaded | VRAM={vram:.2f}GB | time={load_time:.1f}s")
@@ -455,7 +459,10 @@ def run_continuation():
     indices = list(range(len(ds)))
     random.shuffle(indices)
 
-    for idx in indices:
+    # Pre-filter by speaker FIRST (no SNAC cost) — then SNAC only training samples
+    train_indices = [i for i in indices if ds[i].get("speaker_id", str(i)) in train_speakers]
+    log(f"  Pre-filtered to {len(train_indices)} training-speaker samples")
+    for idx in train_indices:
         if len(batches) >= REMAINING_STEPS: break
         try:
             s = ds[idx]
