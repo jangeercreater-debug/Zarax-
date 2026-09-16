@@ -463,7 +463,26 @@ def run_continuation():
     train_indices = [i for i in indices if ds[i].get("speaker_id", str(i)) in train_speakers]
     log(f"  Pre-filtered to {len(train_indices)} training-speaker samples")
     for idx in train_indices:
-        if len(batches) >= REMAINING_STEPS: break
+        if len(batches) >= REMAINING_STEPS:
+            break
+        try:
+            s = ds[idx]
+            audio_np = s["audio"]["array"].astype("float32")
+            sr = s["audio"]["sampling_rate"]
+            text = s.get("text","")
+            if not text.strip(): skipped+=1; skip_reasons["error"]+=1; continue
+            prompt = f"<custom_token_3>{SPEAKER_ID}: {STYLE_TAG} {text}<|eot_id|><custom_token_4>"
+            text_ids = tokenizer.encode(prompt, add_special_tokens=False)
+            audio_toks = audio_to_tokens(audio_np, sr, snac)
+            if len(audio_toks) < 7: skipped+=1; skip_reasons["audio_short"]+=1; continue
+            inp, lbl = make_sequence(text_ids, audio_toks, MAX_SEQ_LEN)
+            if inp[0][-1].item() != END_OF_SPEECH:
+                skipped+=1; skip_reasons["eos_fail"]+=1; continue
+            if (lbl[0]!=-100).sum().item() < 7: skipped+=1; skip_reasons["error"]+=1; continue
+            batches.append((inp.cpu(), lbl.cpu()))
+        except Exception as e:
+            skipped+=1; skip_reasons["error"]+=1
+            if skipped<=3: log(f"  SKIP: {str(e)[:60]}")
         try:
             s = ds[idx]
             spk = s.get("speaker_id", str(idx))
