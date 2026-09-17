@@ -375,6 +375,7 @@ def run_continuation():
     log(f"\n=== STEP 5: Pre-tokenize {REMAINING} batches ===")
     import pickle
     if os.path.exists(BATCH_CACHE):
+        t_tok = time.time()
         log(f"  Loading cached batches...")
         with open(BATCH_CACHE, "rb") as f:
             batches = pickle.load(f)
