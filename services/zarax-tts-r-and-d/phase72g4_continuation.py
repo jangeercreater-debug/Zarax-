@@ -449,6 +449,9 @@ def run_continuation():
         [p for p in model.parameters() if p.requires_grad],
         lr=LR, weight_decay=0.01,
     )
+    # Fix: set initial_lr before resuming scheduler at last_epoch=DONE_OPT
+    for pg in optimizer.param_groups:
+        pg['initial_lr'] = LR
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
         num_warmup_steps=WARMUP_ORIG,
