@@ -47,6 +47,7 @@ BASE_DIR         = "/rnd/phase72g4"
 CKPT_DIR         = f"{BASE_DIR}/checkpoints"
 CONT_DIR         = f"{BASE_DIR}/continuation"
 STEP2000         = f"{CKPT_DIR}/step_02000"
+BATCH_CACHE      = f"{BASE_DIR}/batches_cache_cont.pkl"
 
 BASELINES = {
     "BASE":     {"hi": 0.900, "en": 0.155},
@@ -372,10 +373,19 @@ def run_continuation():
 
     # ── STEP 5: Pre-tokenize ──────────────────────────────────────────────────
     log(f"\n=== STEP 5: Pre-tokenize {REMAINING} batches ===")
-    batches = []
-    skipped = 0
-    skip_r = {"audio_short": 0, "eos_fail": 0, "error": 0}
-    t_tok = time.time()
+    import pickle
+    if os.path.exists(BATCH_CACHE):
+        log(f"  Loading cached batches...")
+        with open(BATCH_CACHE, "rb") as f:
+            batches = pickle.load(f)
+        log(f"  Loaded {len(batches)} cached batches ✅")
+        skipped = 0
+        skip_r = {"cached": True}
+    else:
+        batches = []
+        skipped = 0
+        skip_r = {"audio_short": 0, "eos_fail": 0, "error": 0}
+        t_tok = time.time()
 
     # Pre-filter by speaker first (fast — no SNAC for rejected)
     random.seed(2000)
@@ -430,6 +440,10 @@ def run_continuation():
 
     tok_time = time.time() - t_tok
     log(f"  {len(batches)} batches in {tok_time:.1f}s (skipped {skipped}: {skip_r})")
+
+    with open(BATCH_CACHE, "wb") as f:
+        pickle.dump(batches, f)
+    log(f"  Cache saved ✅")
 
     if not batches:
         return {"status": "BLOCKED", "error": "zero_batches"}
