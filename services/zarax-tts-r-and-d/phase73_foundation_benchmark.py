@@ -187,6 +187,7 @@ def run_benchmark():
             lang_wers = []
             lang_lats = []
             failures = 0
+            peak_vram = 0  # initialize before loop
 
             for s in sents:
                 sid, text = s["id"], s["text"]
