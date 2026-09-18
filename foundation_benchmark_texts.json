@@ -1,0 +1,55 @@
+{
+  "version": "phase-7.3-v1",
+  "created": "September 2026",
+  "hindi": [
+    {"id":"hi_01","cat":"conversational","text":"Namaste, aap kaise hain aaj?"},
+    {"id":"hi_02","cat":"conversational","text":"Kya main aapki madad kar sakta hoon?"},
+    {"id":"hi_03","cat":"short","text":"Dhanyavad."},
+    {"id":"hi_04","cat":"short","text":"Theek hai."},
+    {"id":"hi_05","cat":"medium","text":"Mera naam Zarax hai aur main aapka AI assistant hoon."},
+    {"id":"hi_06","cat":"medium","text":"Aapki appointment kal teen baje scheduled hai."},
+    {"id":"hi_07","cat":"long","text":"Hamare platform par aap apni awaaz clone kar sakte hain aur phir usi awaaz mein jawab pa sakte hain."},
+    {"id":"hi_08","cat":"long","text":"Is mahine ki report mein unhone bataya ki company ne naya investment kiya hai."},
+    {"id":"hi_09","cat":"difficult","text":"Pratigya aur pratibaddh vyakti ne pratirodh ka saamna kiya."},
+    {"id":"hi_10","cat":"difficult","text":"Vigyaan aur takneek ke kshetra mein bharat ne bahut pragati ki hai."},
+    {"id":"hi_11","cat":"numbers","text":"Aapka order number paanch char teen do ek hai."},
+    {"id":"hi_12","cat":"dates","text":"Aaj paanch September do hazaar chhabbis hai."},
+    {"id":"hi_13","cat":"question","text":"Kya aapne apna phone number confirm kar diya?"},
+    {"id":"hi_14","cat":"question","text":"Aap kaun si bhasha mein baat karna chahte hain?"},
+    {"id":"hi_15","cat":"professional","text":"Aapki request process ho rahi hai, please wait karein."},
+    {"id":"hi_16","cat":"professional","text":"Zarax mein aapka swagat hai. Behtar seva ke liye ek dabayein."},
+    {"id":"hi_17","cat":"devanagari","text":"नमस्ते, आप कैसे हैं आज?"},
+    {"id":"hi_18","cat":"devanagari","text":"मेरा नाम ज़ारैक्स है, मैं आपका AI असिस्टेंट हूँ।"},
+    {"id":"hi_19","cat":"consonant","text":"Spasht awaaz mein bolein taaki samajh mein aaye."},
+    {"id":"hi_20","cat":"common","text":"Subah ka waqt sabse accha hota hai kaam karne ke liye."}
+  ],
+  "english": [
+    {"id":"en_01","cat":"conversational","text":"Hello, how are you today?"},
+    {"id":"en_02","cat":"professional","text":"Thank you for calling Zarax. How may I assist you?"},
+    {"id":"en_03","cat":"short","text":"Please hold."},
+    {"id":"en_04","cat":"medium","text":"Your appointment has been confirmed for tomorrow at three PM."},
+    {"id":"en_05","cat":"long","text":"We are working on improving our AI voice platform to support multiple Indian languages including Hindi and Hinglish."},
+    {"id":"en_06","cat":"numbers","text":"Your order number is one two three four five six."},
+    {"id":"en_07","cat":"question","text":"Can you help me find the nearest hospital?"},
+    {"id":"en_08","cat":"professional","text":"The meeting has been rescheduled to Friday morning."},
+    {"id":"en_09","cat":"punctuation","text":"First, please confirm your name. Then, provide your date of birth."},
+    {"id":"en_10","cat":"complex","text":"The quarterly earnings report demonstrates a fifteen percent increase in revenue."}
+  ],
+  "hinglish": [
+    {"id":"hg_01","cat":"casual","text":"Hello bro, aaj market ka kya scene hai?"},
+    {"id":"hg_02","cat":"professional","text":"Namaste! Aapka account balance check karna hai kya?"},
+    {"id":"hg_03","cat":"ivr","text":"Please hold karo, main abhi connect karta hoon."},
+    {"id":"hg_04","cat":"professional","text":"Aapki call important hai, please wait karo."},
+    {"id":"hg_05","cat":"conversational","text":"Sorry yaar, ek minute mein aapko callback milega."},
+    {"id":"hg_06","cat":"technical","text":"Aapka internet connection slow hai, please router restart karo."},
+    {"id":"hg_07","cat":"casual","text":"Bhai, aaj meeting cancel ho gayi, koi tension nahi."},
+    {"id":"hg_08","cat":"professional","text":"Your order successfully place ho gaya hai, delivery kal hogi."},
+    {"id":"hg_09","cat":"codeswitching","text":"Main kal office mein present karunga the quarterly report."},
+    {"id":"hg_10","cat":"natural","text":"Yaar, kya tum mujhe help kar sakte ho is problem ko solve karne mein?"}
+  ],
+  "cross_language_voice_test": [
+    {"id":"cv_01","lang":"english","text":"Hello, this is my voice. I am testing the voice identity system."},
+    {"id":"cv_02","lang":"hindi","text":"Namaste, yeh meri awaaz hai. Main voice identity system test kar raha hoon."},
+    {"id":"cv_03","lang":"hinglish","text":"Hello yaar, this is same voice speaking both languages naturally."}
+  ]
+}
