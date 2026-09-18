@@ -37,7 +37,7 @@ image = (
     image=image,
     volumes={"/models": model_volume},
     secrets=[zarax_secret],
-    scaledown_window=300,
+    scaledown_window=1800,
     max_containers=3,
     timeout=120,
 )
