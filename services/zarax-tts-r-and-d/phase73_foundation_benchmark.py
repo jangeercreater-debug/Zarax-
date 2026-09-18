@@ -198,7 +198,7 @@ def run_benchmark():
                     # VoxCPM2 standard TTS
                     wav = vox_model.generate(
                         text=text, cfg_value=2.0,
-                        inference_timesteps=10, seed=42,
+                        inference_timesteps=10,
                     )
                     latency = time.time() - t0
                     sr = vox_model.tts_model.sample_rate
