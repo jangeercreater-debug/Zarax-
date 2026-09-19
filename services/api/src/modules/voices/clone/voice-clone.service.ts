@@ -1,5 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PRISMA_CLIENT, type PrismaClient } from '@zarax/database';
+import { Optional } from '@nestjs/common';
+import { VoxCPM2Adapter } from './voxcpm2.adapter';
 import { createHash } from 'node:crypto';
 
 import { AudioValidatorService } from './audio-validator.service';
@@ -67,6 +69,7 @@ export class VoiceCloneService {
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     private readonly audioValidator: AudioValidatorService,
     private readonly adapter: ChatterboxAdapter,
+    @Optional() private readonly voxcpm2Adapter?: VoxCPM2Adapter,
   ) {}
 
   async initiateClone(input: InitiateCloneInput): Promise<VoiceCloneRecord> {
@@ -292,6 +295,49 @@ export class VoiceCloneService {
     this.logger.log('VoiceCloneService: synthesis preview started', {
       tenantId, profileId,
     });
+
+    // Phase 7.4: VoxCPM2 experimental routing (feature flag VOXCPM2_TTS_ENABLED)
+    // Default: false — Chatterbox path unchanged.
+    // When enabled: Hindi/Hinglish → VoxCPM2, English → Chatterbox.
+    // NOTE: VoxCPM2 uses standard TTS — NOT the user's cloned voice.
+    const voxcpm2Enabled = process.env.VOXCPM2_TTS_ENABLED === 'true';
+    if (voxcpm2Enabled && this.voxcpm2Adapter?.isAvailable()) {
+      const { detectLanguage } = await import('./language-detector');
+      const detection = detectLanguage(previewText);
+      this.logger.log('VoiceCloneService: language detection', {
+        tenantId, profileId,
+        language: detection.language,
+        confidence: detection.confidence,
+        reason: detection.reason,
+      });
+      if (
+        (detection.language === 'hindi' || detection.language === 'hinglish') &&
+        detection.confidence !== 'low'
+      ) {
+        try {
+          this.logger.log('VoiceCloneService: routing to VoxCPM2', {
+            tenantId, profileId, language: detection.language,
+          });
+          const result = await this.voxcpm2Adapter.synthesize(
+            previewText,
+            detection.language,
+            `preview-${profileId}`,
+          );
+          if (result.warnings.length > 0) {
+            this.logger.warn('VoiceCloneService: VoxCPM2 audio warnings', {
+              warnings: result.warnings, profileId,
+            });
+          }
+          return result.audioBuffer;
+        } catch (err) {
+          // Fallback to Chatterbox on any VoxCPM2 failure
+          this.logger.warn('VoiceCloneService: VoxCPM2 failed — falling back to Chatterbox', {
+            profileId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
 
     const audioBuffer = await this.adapter.synthesizeFromClone({
       text: previewText,
