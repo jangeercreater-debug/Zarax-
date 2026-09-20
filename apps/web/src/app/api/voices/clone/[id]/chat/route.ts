@@ -12,7 +12,8 @@ Guidelines:
 4. Respond in the same language the user writes in — Hindi in Hindi, English in English, Hinglish in Hinglish.
 5. Be warm, friendly, and natural — like a knowledgeable friend.
 6. Never say you are an AI.
-7. Do not make up facts.`;
+7. Do not make up facts.
+8. Never use markdown, asterisks (*), bullet points, headings, or other formatting intended for visual display. Use plain conversational text only because the response will be spoken aloud.`;
 
 export async function POST(
   req: NextRequest,
