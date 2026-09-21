@@ -2,7 +2,7 @@ import type { ResilientClient } from '@zarax/resilience';
 
 import type { CompletionRequest, CompletionResponse, StreamChunk } from '../types/llm.types';
 
-export type LLMProviderName = 'anthropic' | 'groq' | 'openai' | 'gemini';
+export type LLMProviderName = 'anthropic' | 'groq' | 'openai' | 'gemini' | 'self-hosted';
 
 export interface LLMProvider {
   readonly name: LLMProviderName;
