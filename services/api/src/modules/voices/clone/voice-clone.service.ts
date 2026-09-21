@@ -296,20 +296,37 @@ export class VoiceCloneService {
       tenantId, profileId,
     });
 
+    // Phase 7.5: reuse existing language detector for Chatterbox language routing.
+    // (Previously only used inside the dormant VoxCPM2 branch below — the
+    // Chatterbox call always received a hardcoded language: 'en' regardless
+    // of actual text language. That was a confirmed routing bug.)
+    const { detectLanguage } = await import('./language-detector');
+    const detection = detectLanguage(previewText);
+    this.logger.log('VoiceCloneService: language detection', {
+      tenantId, profileId,
+      language: detection.language,
+      confidence: detection.confidence,
+      reason: detection.reason,
+    });
+
+    // Map detected language to a Chatterbox Multilingual language_id.
+    // Confirmed-supported Chatterbox codes include 'en' and 'hi' (ResembleAI docs).
+    // Chatterbox has no dedicated code-mixed/"Hinglish" language code, so we do NOT
+    // invent one. Hinglish (Roman-script, code-mixed) is routed to 'en' as the
+    // documented-safe default, matching the script the text is actually written in.
+    // This is a judgment call, not a proven-correct mapping — needs real audio
+    // validation. See also: the Modal inference service (zarax-clone-inference)
+    // currently does not read a "language" field from the request at all (it only
+    // reads text/token/audio_ref_base64/exaggeration/format), so this routing fix
+    // has no audible effect until the Modal service is updated separately.
+    const chatterboxLanguage = detection.language === 'hindi' ? 'hi' : 'en';
+
     // Phase 7.4: VoxCPM2 experimental routing (feature flag VOXCPM2_TTS_ENABLED)
     // Default: false — Chatterbox path unchanged.
     // When enabled: Hindi/Hinglish → VoxCPM2, English → Chatterbox.
     // NOTE: VoxCPM2 uses standard TTS — NOT the user's cloned voice.
     const voxcpm2Enabled = process.env.VOXCPM2_TTS_ENABLED === 'true';
     if (voxcpm2Enabled && this.voxcpm2Adapter?.isAvailable()) {
-      const { detectLanguage } = await import('./language-detector');
-      const detection = detectLanguage(previewText);
-      this.logger.log('VoiceCloneService: language detection', {
-        tenantId, profileId,
-        language: detection.language,
-        confidence: detection.confidence,
-        reason: detection.reason,
-      });
       if (
         (detection.language === 'hindi' || detection.language === 'hinglish') &&
         detection.confidence !== 'low'
@@ -350,7 +367,7 @@ export class VoiceCloneService {
         audioDataBase64: fullProfile.audioDataBase64,
       },
       requestId: `preview-${profileId}`,
-      language: 'en',
+      language: chatterboxLanguage,
     });
 
     await this.prisma.voiceCloneProfile.update({
@@ -396,4 +413,4 @@ export class VoiceCloneService {
       synthesisStatus: profile.synthesisAvail ? 'SYNTHESIS_READY' : 'SYNTHESIS_UNAVAILABLE',
     };
   }
-  }
+}
