@@ -49,6 +49,13 @@ const prisma = createPrismaClient({ poolMax: Number(process.env.DATABASE_POOL_MA
       groqApiKey: process.env.GROQ_API_KEY,
       openaiApiKey: process.env.OPENAI_API_KEY,
       geminiApiKey: process.env.GEMINI_API_KEY,
+      // Zarax's own self-hosted brain — registered only when both are set, so this
+      // is a no-op (falls back to whatever DEFAULT_LLM_PROVIDER already resolves to)
+      // until services/zarax-brain-inference is actually deployed and its URL/token
+      // are configured. Never auto-selected as default here — that switch is a
+      // deliberate, separately-tested cutover per the migration's rollout plan.
+      selfHostedApiKey: process.env.SELF_HOSTED_LLM_API_KEY,
+      selfHostedBaseUrl: process.env.SELF_HOSTED_LLM_BASE_URL,
     }),
     PrismaClientModule.forRoot(),
     OrchestrationModule,
