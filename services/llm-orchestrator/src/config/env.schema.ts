@@ -18,7 +18,9 @@ export const llmOrchestratorEnvSchema = baseEnvSchema
   .merge(llmProvidersEnvSchema)
   .merge(
     z.object({
-      DEFAULT_LLM_PROVIDER: z.enum(['anthropic', 'groq', 'openai', 'gemini']).default('anthropic'),
+      DEFAULT_LLM_PROVIDER: z
+        .enum(['anthropic', 'groq', 'openai', 'gemini', 'self-hosted'])
+        .default('anthropic'),
       TOOL_EXECUTOR_URL: z.string().url(),
       TOOL_EXECUTOR_INTERNAL_SERVICE_TOKEN: z.string().min(32),
       // RAG is optional — an empty string disables it (see RagClient.search).
