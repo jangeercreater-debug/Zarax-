@@ -51,6 +51,10 @@ export const llmProvidersEnvSchema = z.object({
   GROQ_API_KEY: z.string().min(1).optional(),
   OPENAI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
+  // Zarax's own self-hosted LLM brain (Phase 1 of the Anthropic-removal migration).
+  // Internal service token + internal inference URL — not a third-party vendor key.
+  SELF_HOSTED_LLM_API_KEY: z.string().min(1).optional(),
+  SELF_HOSTED_LLM_BASE_URL: z.string().url().optional(),
 });
 
 export const deepgramEnvSchema = z.object({
