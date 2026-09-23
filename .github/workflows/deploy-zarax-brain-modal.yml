@@ -1,0 +1,162 @@
+name: Deploy Zarax Brain Inference to Modal
+
+# Manual-only. Deliberately NOT triggered on push-to-main (unlike this repo's
+# other Modal deploy workflows, e.g. deploy-modal.yml / deploy-voxcpm2.yml) —
+# Zarax Brain is still Phase 1 scaffolding, not yet wired into any production
+# traffic path, so an accidental push should never redeploy it automatically.
+# Someone must explicitly click "Run workflow" in the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      run_smoke_test:
+        description: 'Run smoke_test.py against the deployed endpoint after deploy'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Modal
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Only the Actions runner's own tooling — NOT services/zarax-brain-inference/
+      # requirements.txt, which pulls in vllm/torch for the Modal *container image*
+      # and has no business being installed on this runner.
+      - name: Install Modal CLI + smoke test dependency
+        run: pip install modal httpx
+
+      - name: Verify required secrets are configured
+        run: |
+          missing=0
+          if [ -z "${{ secrets.MODAL_TOKEN_ID }}" ]; then
+            echo "::error::Secret MODAL_TOKEN_ID is not set in this repo's Actions secrets."
+            missing=1
+          fi
+          if [ -z "${{ secrets.MODAL_TOKEN_SECRET }}" ]; then
+            echo "::error::Secret MODAL_TOKEN_SECRET is not set in this repo's Actions secrets."
+            missing=1
+          fi
+          if [ -z "${{ secrets.ZARAX_BRAIN_SERVICE_TOKEN }}" ]; then
+            echo "::error::Secret ZARAX_BRAIN_SERVICE_TOKEN is not set in this repo's Actions secrets."
+            echo "::error::This becomes the Modal 'zarax-brain-secret' → SELF_HOSTED_LLM_API_KEY. Without it, deploy is refused (see modal_app.py's own startup check)."
+            missing=1
+          fi
+          if [ "$missing" = "1" ]; then
+            echo "::error::Stopping before any deploy attempt — see docs/deployment notes in services/zarax-brain-inference/README.md for how to add these secrets."
+            exit 1
+          fi
+          echo "All required secrets are present."
+
+      # Idempotent — safe to re-run. --force overwrites the existing secret
+      # value rather than failing if zarax-brain-secret already exists
+      # (same pattern services/zarax-voxcpm2-inference's workflow uses).
+      - name: Create/update Modal secret (zarax-brain-secret)
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal secret create zarax-brain-secret \
+            SELF_HOSTED_LLM_API_KEY="${{ secrets.ZARAX_BRAIN_SERVICE_TOKEN }}" \
+            --force
+
+      - name: Deploy Zarax Brain to Modal
+        env:
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: |
+          modal deploy services/zarax-brain-inference/modal_app.py \
+            2>&1 | tee zarax_brain_deploy.log
+
+      - name: Upload deploy log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zarax-brain-deploy-log
+          path: zarax_brain_deploy.log
+
+      # The deployed URL is never known ahead of time — it comes from
+      # Modal's own deploy output. Extracted here (not hardcoded, not
+      # invented) so the smoke test step below can target the real
+      # endpoint. Never echoes the API token — only the public URL.
+      - name: Extract deployed endpoint URL
+        id: extract_url
+        run: |
+          URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.modal\.run' zarax_brain_deploy.log | head -n1 || true)
+          if [ -z "$URL" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Could not automatically extract a *.modal.run URL from the deploy log. Smoke test will be skipped — endpoint must be verified manually from the deploy log artifact above."
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "url=$URL" >> "$GITHUB_OUTPUT"
+            echo "Deployed endpoint: $URL"
+          fi
+
+      - name: Run smoke test against deployed endpoint
+        id: smoke_test
+        if: >-
+          inputs.run_smoke_test &&
+          steps.extract_url.outputs.found == 'true'
+        env:
+          ZARAX_BRAIN_URL: ${{ steps.extract_url.outputs.url }}
+          ZARAX_BRAIN_TOKEN: ${{ secrets.ZARAX_BRAIN_SERVICE_TOKEN }}
+        run: |
+          python services/zarax-brain-inference/tests/smoke_test.py \
+            2>&1 | tee zarax_brain_smoke_test.log
+
+      - name: Upload smoke test log
+        uses: actions/upload-artifact@v4
+        if: always() && steps.smoke_test.outcome != 'skipped'
+        with:
+          name: zarax-brain-smoke-test-log
+          path: zarax_brain_smoke_test.log
+
+      # Honest summary — never claims a PASS that didn't actually run.
+      # Distinguishes: deploy succeeded / smoke test ran and passed / smoke
+      # test ran and failed / smoke test was skipped (and exactly why).
+      - name: Write summary
+        if: always()
+        run: |
+          {
+            echo "## Zarax Brain — Modal Deployment Summary"
+            echo ""
+            echo "**Deploy step:** ${{ job.status }}"
+            echo ""
+            if [ "${{ steps.extract_url.outputs.found }}" = "true" ]; then
+              echo "**Deployed endpoint:** \`${{ steps.extract_url.outputs.url }}\`"
+            else
+              echo "**Deployed endpoint:** could not be auto-extracted — check the "
+              echo "zarax-brain-deploy-log artifact above and confirm manually."
+            fi
+            echo ""
+            if [ "${{ steps.smoke_test.outcome }}" = "success" ]; then
+              echo "**Smoke test:** ran and PASSED (health, ready, auth-reject, real completion) — see zarax-brain-smoke-test-log artifact."
+            elif [ "${{ steps.smoke_test.outcome }}" = "failure" ]; then
+              echo "**Smoke test:** ran and FAILED — see zarax-brain-smoke-test-log artifact for the exact check that failed. Do NOT treat this deployment as verified."
+            else
+              echo "**Smoke test:** SKIPPED — either \`run_smoke_test\` was set to false, or the endpoint URL could not be auto-extracted from the deploy log."
+              echo ""
+              echo "If deploy succeeded but this was skipped: the deployment is NOT verified yet."
+              echo "Manually check the endpoint from the deploy log, then run:"
+              echo ""
+              echo '```'
+              echo "ZARAX_BRAIN_URL=<endpoint-from-deploy-log> \\"
+              echo "ZARAX_BRAIN_TOKEN=<the ZARAX_BRAIN_SERVICE_TOKEN secret value> \\"
+              echo "python services/zarax-brain-inference/tests/smoke_test.py"
+              echo '```'
+            fi
+            echo ""
+            echo "**Note:** this deployment does NOT change Railway env vars, "
+            echo "\`DEFAULT_LLM_PROVIDER\`, or any production routing. It only "
+            echo "brings the Zarax Brain Modal service itself up."
+          } >> "$GITHUB_STEP_SUMMARY"
