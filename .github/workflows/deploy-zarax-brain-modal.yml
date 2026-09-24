@@ -70,10 +70,19 @@ jobs:
             SELF_HOSTED_LLM_API_KEY="${{ secrets.ZARAX_BRAIN_SERVICE_TOKEN }}" \
             --force
 
+      # COLUMNS forces Modal's Rich-based console output to render wide
+      # instead of wrapping at the CI runner's default ~80-column width.
+      # Without this, "modal deploy" was observed (first real run, 2026-09-23)
+      # to print the Web Function URL split across two lines —
+      #   https://<workspace>--<label>.moda
+      #       l.run (label truncated)
+      # — which silently broke the old single-line grep below. Kept as
+      # defense-in-depth alongside the more robust extraction logic.
       - name: Deploy Zarax Brain to Modal
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+          COLUMNS: '250'
         run: |
           modal deploy services/zarax-brain-inference/modal_app.py \
             2>&1 | tee zarax_brain_deploy.log
@@ -89,13 +98,39 @@ jobs:
       # Modal's own deploy output. Extracted here (not hardcoded, not
       # invented) so the smoke test step below can target the real
       # endpoint. Never echoes the API token — only the public URL.
+      #
+      # Two-step extraction, robust to line-wrapping even if COLUMNS above
+      # doesn't fully prevent it (Modal's own DNS-label truncation is a
+      # separate, unrelated thing — see comment on the deploy step):
+      #   1. Try a plain single-line match first (the common case).
+      #   2. If that finds nothing, fall back to an awk pass that starts
+      #      capturing right after the "Created Web Function URL" marker
+      #      line, strips leading/trailing whitespace from each subsequent
+      #      line, and concatenates them until the accumulated text
+      #      contains ".modal.run" — which correctly rejoins a URL that was
+      #      split across lines purely for display width.
       - name: Extract deployed endpoint URL
         id: extract_url
         run: |
           URL=$(grep -oE 'https://[a-zA-Z0-9.-]+\.modal\.run' zarax_brain_deploy.log | head -n1 || true)
+
+          if [ -z "$URL" ]; then
+            JOINED=$(awk '
+              /Created Web Function URL/ { capture=1; buf=""; next }
+              capture {
+                gsub(/^[ \t]+|[ \t]+$/, "", $0)
+                buf = buf $0
+                if (buf ~ /\.modal\.run/) { print buf; exit }
+                # give up after a few lines so we never scan the whole file
+                if (++n > 5) { exit }
+              }
+            ' zarax_brain_deploy.log)
+            URL=$(echo "$JOINED" | grep -oE 'https://[a-zA-Z0-9.-]+\.modal\.run' | head -n1 || true)
+          fi
+
           if [ -z "$URL" ]; then
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Could not automatically extract a *.modal.run URL from the deploy log. Smoke test will be skipped — endpoint must be verified manually from the deploy log artifact above."
+            echo "::warning::Could not automatically extract a *.modal.run URL from the deploy log (tried both plain match and line-rejoin fallback). Smoke test will be skipped — endpoint must be verified manually from the deploy log artifact above."
           else
             echo "found=true" >> "$GITHUB_OUTPUT"
             echo "url=$URL" >> "$GITHUB_OUTPUT"
@@ -160,3 +195,4 @@ jobs:
             echo "\`DEFAULT_LLM_PROVIDER\`, or any production routing. It only "
             echo "brings the Zarax Brain Modal service itself up."
           } >> "$GITHUB_STEP_SUMMARY"
+          
